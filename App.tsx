@@ -305,7 +305,7 @@ const App: React.FC = () => {
       setProcessingStatus(`Fetching media from: ${url}...`);
       
       // Perform a real fetch to get the resource
-      const response = await fetch(url);
+      const response = await fetch(`/functions/proxy?url=${encodeURIComponent(url)}`)
       if (!response.ok) {
         throw new Error(`Failed to fetch URL (Status: ${response.status}). Ensure CORS is enabled on the target server.`);
       }
