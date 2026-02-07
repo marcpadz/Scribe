@@ -1,8 +1,6 @@
 import { Project, User } from "../types";
 
 // Note: In a real production app, these would be in environment variables
-// You must set REACT_APP_GOOGLE_CLIENT_ID and API_KEY in your env
-// For this environment, we assume they are provided via process.env or similar injection
 const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || ''; 
 const API_KEY = process.env.API_KEY || '';
 const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile";
@@ -17,16 +15,10 @@ export const initGoogleServices = (): Promise<void> => {
        if ((window as any).gapi && (window as any).google) {
           (window as any).gapi.load('client', async () => {
              try {
-                 // Initialize the client with API key only first
                  if (API_KEY) {
-                    await (window as any).gapi.client.init({
-                        apiKey: API_KEY,
-                    });
+                    await (window as any).gapi.client.init({ apiKey: API_KEY });
                  }
-                 
-                 // Explicitly load the Drive API v3
                  await (window as any).gapi.client.load('drive', 'v3');
-                 
                  gapiInited = true;
              } catch (error) {
                  console.error("GAPI init failed", error);
@@ -60,12 +52,12 @@ export const initGoogleServices = (): Promise<void> => {
 export const handleGoogleLogin = (): Promise<User> => {
   return new Promise((resolve, reject) => {
     if (!CLIENT_ID) {
-        reject("Google Client ID is not configured. Please set REACT_APP_GOOGLE_CLIENT_ID in your environment.");
+        reject("Google Client ID is not configured.");
         return;
     }
 
     if (!tokenClient) {
-        reject("Google Services not initialized. Check console for initialization errors.");
+        reject("Google Services not initialized.");
         return;
     }
 
@@ -75,7 +67,6 @@ export const handleGoogleLogin = (): Promise<User> => {
         return;
       }
       
-      // Fetch user profile
       try {
          const userInfo = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: `Bearer ${resp.access_token}` }
@@ -100,53 +91,83 @@ export const handleGoogleLogin = (): Promise<User> => {
   });
 };
 
-export const saveToDrive = async (project: Project, accessToken: string): Promise<string> => {
-    const fileContent = JSON.stringify(project);
-    const file = new Blob([fileContent], { type: 'application/json' });
-    const metadata = {
-        name: `${project.name}.neoscriber`,
-        mimeType: 'application/json',
-    };
+// --- Drive File Operations ---
 
+export interface DriveFile {
+    id: string;
+    name: string;
+    mimeType: string;
+    modifiedTime?: string;
+    size?: string;
+    thumbnailLink?: string;
+}
+
+export const searchDriveFiles = async (accessToken: string, mode: 'project' | 'media'): Promise<DriveFile[]> => {
+    let q = "trashed = false";
+    
+    if (mode === 'project') {
+        // Look for our specific JSON files
+        q += " and (name contains '.neoscriber' or mimeType = 'application/json')";
+    } else {
+        // Look for Audio or Video
+        q += " and (mimeType contains 'audio/' or mimeType contains 'video/')";
+    }
+
+    const params = new URLSearchParams({
+        pageSize: '20',
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, thumbnailLink)',
+        q: q,
+        orderBy: 'modifiedTime desc'
+    });
+
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+        headers: { 'Authorization': 'Bearer ' + accessToken },
+    });
+    
+    if (!res.ok) throw new Error("Failed to search Drive");
+    const data = await res.json();
+    return data.files || [];
+};
+
+export const getDriveFileContent = async (fileId: string, accessToken: string): Promise<Blob> => {
+     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { 'Authorization': 'Bearer ' + accessToken },
+    });
+    if (!res.ok) throw new Error("Failed to download file");
+    return await res.blob();
+};
+
+export const createDriveFile = async (accessToken: string, name: string, content: Blob): Promise<string> => {
+    const metadata = { 
+        name, 
+        mimeType: 'application/json' 
+    };
+    
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', file);
+    form.append('file', content);
 
     const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
         method: 'POST',
-        headers: new Headers({ 'Authorization': 'Bearer ' + accessToken }),
-        body: form,
+        headers: { 'Authorization': 'Bearer ' + accessToken },
+        body: form
     });
     
-    if (!res.ok) {
-        throw new Error(`Drive Upload Failed: ${res.statusText}`);
-    }
-    
+    if (!res.ok) throw new Error("Failed to create file");
     const data = await res.json();
     return data.id;
 };
 
-export const loadFromDrive = async (fileId: string, accessToken: string): Promise<Project> => {
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+export const updateDriveFile = async (accessToken: string, fileId: string, content: Blob): Promise<void> => {
+     const form = new FormData();
+     // We only update content here, metadata can be added if needed
+     form.append('file', content);
+
+     const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
+        method: 'PATCH',
         headers: { 'Authorization': 'Bearer ' + accessToken },
+        body: form
     });
     
-    if (!res.ok) throw new Error("Failed to load file from Drive");
-    return await res.json();
-};
-
-export const listDriveProjects = async (accessToken: string): Promise<any[]> => {
-    // Query for files with our extension
-    const q = "name contains '.neoscriber' and trashed = false";
-    try {
-        const res = await (window as any).gapi.client.drive.files.list({
-            pageSize: 10,
-            fields: 'nextPageToken, files(id, name)',
-            q: q
-        });
-        return res.result.files || [];
-    } catch (e) {
-        console.error("Error listing drive files", e);
-        throw e;
-    }
+    if (!res.ok) throw new Error("Failed to update file");
 };

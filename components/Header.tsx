@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, ReactNode } from 'react';
 import { User, Project } from '../types';
 import { NeoButton } from './NeoUi';
-import { Save, FolderOpen, LogOut, FileText, UserCircle, Cloud, ChevronDown, Clock, Download, type LucideIcon } from 'lucide-react';
+import { Save, FolderOpen, LogOut, FileText, UserCircle, Cloud, ChevronDown, Clock, Download, type LucideIcon, UploadCloud } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
@@ -13,6 +13,7 @@ interface HeaderProps {
   onSaveAs: () => void;
   onOpenLocal: () => void;
   onOpenDrive: () => void;
+  onImportDriveMedia: () => void;
   recentProjects: Project[];
   onOpenRecent: (p: Project) => void;
 }
@@ -64,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSaveAs,
   onOpenLocal,
   onOpenDrive,
+  onImportDriveMedia,
   recentProjects,
   onOpenRecent
 }) => {
@@ -113,8 +115,14 @@ export const Header: React.FC<HeaderProps> = ({
                         <MenuItem icon={FolderOpen} label="Open Local File..." onClick={() => handleMenuClick(onOpenLocal)} />
                         <MenuItem 
                             icon={Cloud} 
-                            label="Open from Drive..." 
+                            label="Open Project from Drive..." 
                             onClick={() => handleMenuClick(onOpenDrive)} 
+                            disabled={!user}
+                        />
+                        <MenuItem 
+                            icon={UploadCloud} 
+                            label="Import Media from Drive..." 
+                            onClick={() => handleMenuClick(onImportDriveMedia)} 
                             disabled={!user}
                         />
                         <div className="border-t border-gray-200 dark:border-zinc-800 my-1"></div>
@@ -164,7 +172,7 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                     <div className="text-right hidden sm:block">
                         <div className="text-xs font-bold uppercase leading-none">{user.name}</div>
-                        <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">Connected</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">Connected</div>
                     </div>
                     {user.picture ? (
                         <img src={user.picture} alt={user.name} className="w-10 h-10 border-2 border-black dark:border-white shadow-neo-sm dark:shadow-neo-sm-white" />

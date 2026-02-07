@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Bookmark, Scissors, Download, RotateCcw, FastForward, Upload, Loader2, XCircle, Video, FileAudio, ScanEye } from 'lucide-react';
+import { Play, Pause, Bookmark, Scissors, Download, RotateCcw, FastForward, Upload, Loader2, XCircle, Video, FileAudio, ScanEye, UploadCloud } from 'lucide-react';
 import { AudioRecorder } from './components/AudioRecorder';
 import { LinkImporter } from './components/LinkImporter';
-import { NeoButton, NeoCard, NeoBadge, NeoProgressBar, NeoModal } from './components/NeoUi';
+import { NeoButton, NeoCard, NeoProgressBar, NeoModal } from './components/NeoUi';
 import { Header } from './components/Header';
 import { LoginPage } from './components/LoginPage';
 import { ChatBot } from './components/ChatBot';
 import { ThemeToggle } from './components/ThemeToggle';
+import { DrivePicker } from './components/DrivePicker';
 import { transcribeAudio, analyzeVideoFrames } from './services/geminiService';
 import { TranscriptData, PlaybackSpeed, Bookmark as BookmarkType, User, Project } from './types';
 import { blobToBase64, formatTime, sliceAudioBuffer, resampleAndSliceAudio } from './utils/audioUtils';
 import { extractVideoFrames } from './utils/videoUtils';
-import { initGoogleServices, handleGoogleLogin, saveToDrive, listDriveProjects, loadFromDrive } from './services/driveService';
+import { initGoogleServices, handleGoogleLogin, createDriveFile, updateDriveFile, getDriveFileContent, DriveFile } from './services/driveService';
 
 const CHUNK_DURATION = 600; // 10 minutes
 
@@ -42,6 +43,10 @@ const App: React.FC = () => {
   // --- AI Analysis State ---
   const [isVideoAnalyzing, setIsVideoAnalyzing] = useState(false);
   const [videoAnalysisResult, setVideoAnalysisResult] = useState<string | null>(null);
+
+  // --- Drive Picker State ---
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  const [drivePickerMode, setDrivePickerMode] = useState<'project' | 'media'>('project');
 
   // Use a generic media element ref
   const mediaRef = useRef<HTMLMediaElement | null>(null);
@@ -84,7 +89,7 @@ const App: React.FC = () => {
       setView('workspace');
     } catch (e) {
       console.error("Login failed", e);
-      alert("Login failed. Check console and ensure Client ID is configured in driveService.ts");
+      alert("Login failed. Check console and ensure Client ID is configured.");
     }
   };
 
@@ -118,30 +123,53 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSave = async () => {
+  const performSave = async (asNewCopy: boolean) => {
     if (!transcript) {
         alert("Nothing to save!");
         return;
     }
 
+    let targetName = currentProject?.name || `Project ${new Date().toLocaleString()}`;
+    // If saving as new copy, force a new ID, otherwise use existing if available
+    let targetId = asNewCopy ? `local_${Date.now()}` : (currentProject?.id || `local_${Date.now()}`);
+
+    if (asNewCopy) {
+        const nameInput = prompt("Enter name for the new project copy:", targetName + " (Copy)");
+        if (!nameInput) return; // Cancelled
+        targetName = nameInput;
+    }
+
     const projData: Project = {
-        id: currentProject?.id || `local_${Date.now()}`,
-        name: currentProject?.name || `Project ${new Date().toLocaleString()}`,
+        id: targetId,
+        name: targetName,
         lastModified: Date.now(),
         transcript: transcript,
         bookmarks: bookmarks,
         mediaType: mediaType,
-        sourceType: user && currentProject?.sourceType === 'drive' ? 'drive' : 'local'
+        sourceType: user && user.accessToken ? 'drive' : 'local'
     };
 
     if (projData.sourceType === 'drive' && user?.accessToken) {
         // Save to Drive
         try {
-            const driveId = await saveToDrive(projData, user.accessToken);
-            const updatedProj = { ...projData, id: driveId };
-            setCurrentProject(updatedProj);
-            addToRecents(updatedProj);
-            alert("Saved to Google Drive!");
+            const blob = new Blob([JSON.stringify(projData)], { type: 'application/json' });
+            
+            // Check if we are updating an existing Drive file (and not forcing a new copy)
+            if (!asNewCopy && currentProject?.sourceType === 'drive' && currentProject.id) {
+                await updateDriveFile(user.accessToken, currentProject.id, blob);
+                alert("Project synced to Drive!");
+            } else {
+                // Create new file
+                const driveId = await createDriveFile(user.accessToken, projData.name + '.neoscriber', blob);
+                // Update the project with the new Drive ID
+                projData.id = driveId;
+                alert("Saved new copy to Google Drive!");
+            }
+            
+            // Update current workspace to the saved project
+            setCurrentProject(projData);
+            addToRecents(projData);
+
         } catch (e) {
             console.error(e);
             alert("Failed to save to Drive.");
@@ -177,23 +205,62 @@ const App: React.FC = () => {
       input.click();
   };
 
-  const handleOpenDrive = async () => {
+  const handleOpenDrive = () => {
       if (!user?.accessToken) return;
-      try {
-          const files = await listDriveProjects(user.accessToken);
-          if (files.length === 0) {
-              alert("No .neoscriber files found in Drive.");
-              return;
+      setDrivePickerMode('project');
+      setDrivePickerOpen(true);
+  };
+  
+  const handleImportDriveMedia = () => {
+      if (!user?.accessToken) return;
+      setDrivePickerMode('media');
+      setDrivePickerOpen(true);
+  };
+
+  const handleDriveSelect = async (file: DriveFile) => {
+      setDrivePickerOpen(false);
+      if (!user?.accessToken) return;
+
+      if (drivePickerMode === 'project') {
+          try {
+              const blob = await getDriveFileContent(file.id, user.accessToken);
+              const text = await blob.text();
+              const proj = JSON.parse(text) as Project;
+              // Ensure we track it as a Drive project with the correct ID
+              loadProject({ ...proj, id: file.id, sourceType: 'drive' });
+          } catch (e) {
+              console.error(e);
+              alert("Failed to load project.");
           }
-          const choice = prompt("Enter File Index to load:\n" + files.map((f, i) => `${i}: ${f.name}`).join("\n"));
-          if (choice && files[parseInt(choice)]) {
-             const fileId = files[parseInt(choice)].id;
-             const proj = await loadFromDrive(fileId, user.accessToken);
-             loadProject({ ...proj, sourceType: 'drive' });
+      } else {
+          // Media Import
+          setIsProcessing(true);
+          setProcessingStatus("Downloading media from Drive...");
+          setProcessingProgress(10);
+          
+          try {
+              const blob = await getDriveFileContent(file.id, user.accessToken);
+              const type = file.mimeType.includes('video') ? 'video' : 'audio';
+              setMediaType(type);
+              
+              if (!currentProject) {
+                  setCurrentProject({
+                      id: `drive_media_${file.id}`,
+                      name: file.name,
+                      lastModified: Date.now(),
+                      transcript: null,
+                      bookmarks: [],
+                      mediaType: type,
+                      sourceType: 'local' // Project itself is local until saved
+                  });
+              }
+              
+              await processAudioBlob(blob);
+          } catch (e) {
+              console.error(e);
+              setIsProcessing(false);
+              alert("Failed to download media from Drive.");
           }
-      } catch (e) {
-          console.error(e);
-          alert("Error accessing Drive");
       }
   };
 
@@ -495,10 +562,11 @@ const App: React.FC = () => {
         onLogin={() => setView('login')}
         onLogout={handleLogout}
         onNew={handleNewProject}
-        onSave={handleSave}
-        onSaveAs={handleSave}
+        onSave={() => performSave(false)}
+        onSaveAs={() => performSave(true)}
         onOpenLocal={handleOpenLocal}
         onOpenDrive={handleOpenDrive}
+        onImportDriveMedia={handleImportDriveMedia}
         recentProjects={recentProjects}
         onOpenRecent={(p) => loadProject(p)}
       />
@@ -546,6 +614,18 @@ const App: React.FC = () => {
                                 <LinkImporter onImport={handleLinkImport} isProcessing={isProcessing} />
                             </div>
                         </div>
+                        
+                        {/* Method 3: Drive (if logged in) */}
+                        {user && (
+                             <div className="mt-6 w-full px-4">
+                                <button onClick={handleImportDriveMedia} className="w-full">
+                                    <NeoCard className="flex items-center justify-center gap-4 py-6 bg-white dark:bg-neo-dark-card hover:bg-neo-blue dark:hover:bg-neo-blue group hover:-translate-y-1 hover:text-white transition-all">
+                                        <UploadCloud size={24} />
+                                        <span className="font-black uppercase tracking-wider text-sm">Import from Drive</span>
+                                    </NeoCard>
+                                </button>
+                             </div>
+                        )}
 
                         <div className="mt-12 text-center text-gray-500 dark:text-gray-400 font-mono text-sm">
                             <div className="flex flex-col gap-1 text-xs">
@@ -739,6 +819,16 @@ const App: React.FC = () => {
                 <NeoButton onClick={() => setVideoAnalysisResult(null)}>Close</NeoButton>
             </div>
         </NeoModal>
+        
+        {user?.accessToken && (
+            <DrivePicker 
+                isOpen={drivePickerOpen}
+                onClose={() => setDrivePickerOpen(false)}
+                onSelect={handleDriveSelect}
+                accessToken={user.accessToken}
+                mode={drivePickerMode}
+            />
+        )}
 
         <ChatBot transcriptContext={getTranscriptText()} />
         <ThemeToggle />
