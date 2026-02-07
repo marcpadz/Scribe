@@ -1,11 +1,10 @@
 import { Project, User } from "../types";
 
 // Note: In a real production app, these would be in environment variables
-// Since we are in a WebContainer/Demo environment, we might simulate if keys are missing
-// You must set REACT_APP_CLIENT_ID and API_KEY in your env
+// You must set REACT_APP_GOOGLE_CLIENT_ID and API_KEY in your env
+// For this environment, we assume they are provided via process.env or similar injection
 const CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || ''; 
 const API_KEY = process.env.API_KEY || '';
-// const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]; // Removed to prevent discovery error
 const SCOPES = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile";
 
 let tokenClient: any;
@@ -19,28 +18,33 @@ export const initGoogleServices = (): Promise<void> => {
           (window as any).gapi.load('client', async () => {
              try {
                  // Initialize the client with API key only first
-                 await (window as any).gapi.client.init({
-                    apiKey: API_KEY,
-                 });
+                 if (API_KEY) {
+                    await (window as any).gapi.client.init({
+                        apiKey: API_KEY,
+                    });
+                 }
                  
                  // Explicitly load the Drive API v3
-                 // This method is more robust against "API discovery response missing required fields" errors
                  await (window as any).gapi.client.load('drive', 'v3');
                  
                  gapiInited = true;
              } catch (error) {
-                 console.warn("GAPI init failed (likely due to missing keys or network block), falling back to mock mode", error);
+                 console.error("GAPI init failed", error);
              }
              
              try {
-                 tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-                    client_id: CLIENT_ID,
-                    scope: SCOPES,
-                    callback: '', // defined at request time
-                 });
-                 gisInited = true;
+                 if (CLIENT_ID) {
+                     tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+                        client_id: CLIENT_ID,
+                        scope: SCOPES,
+                        callback: '', // defined at request time
+                     });
+                     gisInited = true;
+                 } else {
+                     console.warn("Skipping GIS Init: REACT_APP_GOOGLE_CLIENT_ID is missing");
+                 }
              } catch (error) {
-                 console.warn("GIS init failed", error);
+                 console.error("GIS init failed", error);
              }
 
              resolve();
@@ -55,19 +59,13 @@ export const initGoogleServices = (): Promise<void> => {
 
 export const handleGoogleLogin = (): Promise<User> => {
   return new Promise((resolve, reject) => {
+    if (!CLIENT_ID) {
+        reject("Google Client ID is not configured. Please set REACT_APP_GOOGLE_CLIENT_ID in your environment.");
+        return;
+    }
+
     if (!tokenClient) {
-        // Fallback for demo without keys
-        if (!CLIENT_ID) {
-            console.warn("No Client ID provided. Simulating login.");
-            resolve({
-                name: "Demo User",
-                email: "demo@neoscriber.app",
-                picture: "https://ui-avatars.com/api/?name=Neo+Scriber&background=0D8ABC&color=fff",
-                accessToken: "mock_token"
-            });
-            return;
-        }
-        reject("Google Services not initialized");
+        reject("Google Services not initialized. Check console for initialization errors.");
         return;
     }
 
@@ -103,11 +101,6 @@ export const handleGoogleLogin = (): Promise<User> => {
 };
 
 export const saveToDrive = async (project: Project, accessToken: string): Promise<string> => {
-    if (!CLIENT_ID) {
-        console.log("Simulating Drive Save", project);
-        return "mock_drive_id_" + Date.now();
-    }
-
     const fileContent = JSON.stringify(project);
     const file = new Blob([fileContent], { type: 'application/json' });
     const metadata = {
@@ -125,35 +118,35 @@ export const saveToDrive = async (project: Project, accessToken: string): Promis
         body: form,
     });
     
+    if (!res.ok) {
+        throw new Error(`Drive Upload Failed: ${res.statusText}`);
+    }
+    
     const data = await res.json();
     return data.id;
 };
 
 export const loadFromDrive = async (fileId: string, accessToken: string): Promise<Project> => {
-    if (!CLIENT_ID) throw new Error("Drive not configured");
-
     const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
         headers: { 'Authorization': 'Bearer ' + accessToken },
     });
     
-    if (!res.ok) throw new Error("Failed to load file");
+    if (!res.ok) throw new Error("Failed to load file from Drive");
     return await res.json();
 };
 
 export const listDriveProjects = async (accessToken: string): Promise<any[]> => {
-    if (!CLIENT_ID) {
-        return [
-            { id: 'mock_1', name: 'Demo Project 1.neoscriber' },
-            { id: 'mock_2', name: 'Interview 2024.neoscriber' }
-        ];
-    }
-
-    // Query for files with our extension or mimeType
+    // Query for files with our extension
     const q = "name contains '.neoscriber' and trashed = false";
-    const res = await (window as any).gapi.client.drive.files.list({
-        pageSize: 10,
-        fields: 'nextPageToken, files(id, name)',
-        q: q
-    });
-    return res.result.files;
+    try {
+        const res = await (window as any).gapi.client.drive.files.list({
+            pageSize: 10,
+            fields: 'nextPageToken, files(id, name)',
+            q: q
+        });
+        return res.result.files || [];
+    } catch (e) {
+        console.error("Error listing drive files", e);
+        throw e;
+    }
 };

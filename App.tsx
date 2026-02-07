@@ -84,7 +84,7 @@ const App: React.FC = () => {
       setView('workspace');
     } catch (e) {
       console.error("Login failed", e);
-      alert("Login failed. Check console for details.");
+      alert("Login failed. Check console and ensure Client ID is configured in driveService.ts");
     }
   };
 
@@ -235,12 +235,12 @@ const App: React.FC = () => {
     setProcessingProgress(10);
 
     try {
-      const fetchUrl = url;
-      setProcessingStatus(`Fetching media from: ${url.split('/')[2]}...`);
+      setProcessingStatus(`Fetching media from: ${url}...`);
       
-      const response = await fetch(fetchUrl);
+      // Perform a real fetch to get the resource
+      const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`Failed to fetch URL: ${response.statusText}. Note: Social media links often require a specialized extractor or proxy due to security policies.`);
+        throw new Error(`Failed to fetch URL (Status: ${response.status}). Ensure CORS is enabled on the target server.`);
       }
 
       const contentType = response.headers.get('Content-Type') || '';
@@ -261,11 +261,12 @@ const App: React.FC = () => {
           });
       }
 
+      // Process the fetched blob directly
       await processAudioBlob(blob);
     } catch (e: any) {
       console.error("Link import failed", e);
       setIsProcessing(false);
-      alert(`Import failed: ${e.message}\n\nTip: For YouTube or Social Media, the browser's security blocks direct access. This tool works best with direct links to .mp4, .mp3, or .m4a files.`);
+      alert(`Import failed: ${e.message}\n\nNote: Browsers block direct access to most websites (like YouTube) due to CORS security. This feature works best with direct links to audio/video files on servers that allow cross-origin access (e.g., S3 public buckets, Direct download links).`);
     }
   };
 
@@ -282,7 +283,11 @@ const App: React.FC = () => {
     setIsProcessing(true);
     setProcessingProgress(0);
     setProcessingStatus("Initializing Engine...");
-    setAudioUrl(URL.createObjectURL(blob));
+    
+    // Create object URL from the Blob to embed it in the player
+    const objectUrl = URL.createObjectURL(blob);
+    setAudioUrl(objectUrl);
+    
     if (!transcript) {
         setTranscript({ segments: [] });
     }
@@ -303,6 +308,7 @@ const App: React.FC = () => {
       const context = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = context;
 
+      // Decode the audio data for transcription
       const decodedBuffer = await context.decodeAudioData(arrayBuffer);
       
       audioBufferRef.current = decodedBuffer;
@@ -358,9 +364,15 @@ const App: React.FC = () => {
       console.error("Processing failed", e);
       let msg = "Error processing file.";
       if (e.message && (e.message.toLowerCase().includes("decode") || e.message.toLowerCase().includes("encoding"))) {
-          msg = "Unable to decode audio data. Link content may be inaccessible.";
+          msg = "Unable to decode audio data. Link content may be inaccessible or corrupt.";
       }
       setProcessingStatus(msg);
+      // Clean up if failed
+      if (isRelinking) {
+          // Keep existing transcript
+      } else {
+         // Reset? Maybe not, allow retry
+      }
     } finally {
         setAbortController(null);
     }
