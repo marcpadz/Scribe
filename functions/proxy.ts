@@ -1,12 +1,11 @@
-// Universal CORS Proxy Function
-// Works on: Cloudflare Pages Functions, Netlify Functions, Vercel Serverless Functions
+// Universal CORS Proxy with Social Media Support
+// Supports: YouTube, TikTok, Instagram, Facebook, Twitter/X, Threads
+// Uses free Cobalt API for media extraction
 
-// Cloudflare Pages Functions export
 export async function onRequest(context: any) {
   return handleRequest(context.request, context.env);
 }
 
-// Netlify Functions export
 export async function handler(event: any, context: any) {
   const request = {
     url: event.rawUrl || `https://${event.headers.host}${event.path}`,
@@ -14,9 +13,7 @@ export async function handler(event: any, context: any) {
     headers: event.headers,
     body: event.body
   };
-  
   const response = await handleRequest(request as any, {});
-  
   return {
     statusCode: response.status,
     headers: Object.fromEntries(response.headers.entries()),
@@ -24,96 +21,86 @@ export async function handler(event: any, context: any) {
   };
 }
 
-// Core proxy logic
+function detectPlatform(url: string): string | null {
+  const u = url.toLowerCase();
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+  if (u.includes('tiktok.com')) return 'tiktok';
+  if (u.includes('instagram.com')) return 'instagram';
+  if (u.includes('facebook.com') || u.includes('fb.com') || u.includes('fb.watch')) return 'facebook';
+  if (u.includes('twitter.com') || u.includes('x.com')) return 'twitter';
+  if (u.includes('threads.net')) return 'threads';
+  return null;
+}
+
+async function extractMediaUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.cobalt.tools/api/json', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, videoQuality: '720', filenameStyle: 'basic', downloadMode: 'auto', audioFormat: 'mp3' })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status === 'error' || data.status === 'rate-limit') return null;
+    if (data.status === 'redirect' || data.status === 'tunnel' || data.status === 'stream') return data.url;
+    if (data.status === 'picker' && data.picker?.[0]) return data.picker[0].url;
+    return null;
+  } catch (e) { return null; }
+}
+
 async function handleRequest(request: Request, env: any): Promise<Response> {
-  // Handle CORS preflight
   if (request.method === 'OPTIONS') {
     return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
+      headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' }
     });
   }
-
   try {
-    // Get the target URL from query parameter
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get('url');
-
     if (!targetUrl) {
-      return new Response(
-        JSON.stringify({ error: 'Missing url parameter' }),
-        { 
-          status: 400,
-          headers: { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Missing url parameter' }), { 
+        status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
     }
-
-    // Validate URL
     let parsedUrl;
-    try {
-      parsedUrl = new URL(targetUrl);
-    } catch (e) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid URL format' }),
-        { 
-          status: 400,
-          headers: { 
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
-          }
-        }
-      );
+    try { parsedUrl = new URL(targetUrl); } catch (e) {
+      return new Response(JSON.stringify({ error: 'Invalid URL' }), { 
+        status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      });
     }
-
-    // Fetch the target URL
-    const response = await fetch(targetUrl, {
+    const platform = detectPlatform(targetUrl);
+    let finalUrl = targetUrl;
+    if (platform) {
+      const extracted = await extractMediaUrl(targetUrl);
+      if (extracted) finalUrl = extracted;
+      else return new Response(JSON.stringify({ 
+        error: 'Failed to extract media', 
+        message: `Could not extract media from ${platform}. Content may be private or unavailable.`,
+        platform
+      }), { status: 422, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+    }
+    const response = await fetch(finalUrl, {
       method: request.method,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-      },
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': '*/*', 'Referer': parsedUrl.origin }
     });
-
-    // Get response body
     const body = await response.arrayBuffer();
-    const contentType = response.headers.get('Content-Type') || 'application/octet-stream';
-
-    // Return proxied response with CORS headers
     return new Response(body, {
       status: response.status,
       headers: {
-        'Content-Type': contentType,
+        'Content-Type': response.headers.get('Content-Type') || 'application/octet-stream',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
         'Cache-Control': 'public, max-age=3600',
-      },
+        'X-Platform': platform || 'direct'
+      }
     });
   } catch (error: any) {
-    return new Response(
-      JSON.stringify({ 
-        error: 'Failed to fetch URL',
-        message: error.message 
-      }),
-      { 
-        status: 500,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      }
-    );
+    return new Response(JSON.stringify({ error: 'Failed to fetch', message: error.message }), { 
+      status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    });
   }
 }
 
-// Vercel Serverless Function export (default)
 export default async function(req: any, res: any) {
   const url = `https://${req.headers.host}${req.url}`;
   const request = new Request(url, {
@@ -121,12 +108,8 @@ export default async function(req: any, res: any) {
     headers: req.headers,
     body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined
   });
-  
   const response = await handleRequest(request, {});
-  
   res.status(response.status);
-  response.headers.forEach((value, key) => {
-    res.setHeader(key, value);
-  });
+  response.headers.forEach((value, key) => res.setHeader(key, value));
   res.send(await response.arrayBuffer());
 }
