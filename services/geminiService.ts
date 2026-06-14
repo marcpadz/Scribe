@@ -32,7 +32,7 @@ export const transcribeAudio = async (base64Audio: string): Promise<TranscriptDa
     required: ["segments"],
   };
 
-  const model = "gemini-2.5-flash"; 
+  const model = "gemma-4-31b-1t";
 
   try {
     const response = await ai.models.generateContent({
@@ -72,7 +72,7 @@ export const transcribeAudio = async (base64Audio: string): Promise<TranscriptDa
 
 export const analyzeVideoFrames = async (frames: string[], prompt?: string): Promise<string> => {
     const ai = getAiClient();
-    const model = "gemini-3-pro-preview";
+    const model = "gemma-4-31b-1t";
 
     // Prepare image parts
     const imageParts = frames.map(frame => ({
@@ -98,7 +98,7 @@ export const analyzeVideoFrames = async (frames: string[], prompt?: string): Pro
 
 export const chatWithGemini = async (history: {role: string, parts: {text: string}[]}[], message: string, context: string): Promise<string> => {
     const ai = getAiClient();
-    const model = "gemini-3-pro-preview";
+    const model = "gemma-4-31b-1t";
 
     const systemInstruction = `You are NeoScriber's AI Assistant. 
     You have access to the transcript of the media file the user is working on.
