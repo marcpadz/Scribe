@@ -30,7 +30,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplet
 
       mediaRecorder.onstop = () => {
         // Fix: Use the actual mime type of the recording, default to webm if missing
-        const type = mediaRecorder.mimeType || 'audio/webm';
+        const type = chunksRef.current[0]?.type || mediaRecorder.mimeType || 'audio/webm';
         const blob = new Blob(chunksRef.current, { type });
         onRecordingComplete(blob);
         
