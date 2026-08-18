@@ -4,16 +4,16 @@ import { AudioRecorder } from './components/AudioRecorder';
 import { LinkImporter } from './components/LinkImporter';
 import { NeoButton, NeoCard, NeoProgressBar, NeoModal } from './components/NeoUi';
 import { Header } from './components/Header';
-import { LoginPage } from './components/LoginPage';
 import { ChatBot } from './components/ChatBot';
 import { ThemeToggle } from './components/ThemeToggle';
 import { DrivePicker } from './components/DrivePicker';
 import ModelIndicator from './components/ModelIndicator';
+import AuthGate from './components/AuthGate';
 import { transcribeAudio, analyzeVideoFrames, isApiKeyConfigured } from './services/geminiService';
 import { TranscriptData, PlaybackSpeed, Bookmark as BookmarkType, User, Project } from './types';
 import { blobToBase64, formatTime, sliceAudioBuffer, resampleAndSliceAudio, extractAudioFromVideo } from './utils/audioUtils';
 import { extractVideoFrames } from './utils/videoUtils';
-import { initGoogleServices, handleGoogleLogin, createDriveFile, updateDriveFile, getDriveFileContent, DriveFile } from './services/driveService';
+import { createDriveFile, updateDriveFile, getDriveFileContent, DriveFile } from './services/driveService';
 
 const CHUNK_DURATION = 600; // 10 minutes
 
@@ -65,9 +65,6 @@ const App: React.FC = () => {
       setRecentProjects(JSON.parse(savedRecents));
     }
 
-    // Init Google Scripts
-    initGoogleServices().catch(console.error);
-
     // Cleanup AudioContext on unmount
     return () => {
       if (audioContextRef.current) {
@@ -84,21 +81,6 @@ const App: React.FC = () => {
   };
 
   // --- Auth Handlers ---
-  const handleLogin = async () => {
-    try {
-      const u = await handleGoogleLogin();
-      setUser(u);
-      setView('workspace');
-    } catch (e) {
-      console.error("Login failed", e);
-      alert("Login failed. Check console and ensure Client ID is configured.");
-    }
-  };
-
-  const handleGuest = () => {
-    setView('workspace');
-  };
-
   const handleLogout = () => {
     setUser(null);
     setCurrentProject(null);
@@ -560,7 +542,7 @@ const App: React.FC = () => {
   if (view === 'login') {
       return (
         <>
-            <LoginPage onLoginGoogle={handleLogin} onGuest={handleGuest} />
+            <AuthGate onAuthed={() => setView('workspace')} />
             <ThemeToggle />
         </>
       );

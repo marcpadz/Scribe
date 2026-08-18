@@ -1,0 +1,15 @@
+name = "scribe-auth-worker"
+main = "src/index.ts"
+compatibility_date = "2026-02-07"
+
+# D1 database for users / sessions / verification
+[[d1_databases]]
+binding = "DB"
+database_name = "scribe-auth-db"
+database_id = "REPLACE_WITH_YOUR_D1_ID"  # run: npx wrangler d1 create scribe-auth-db
+
+[vars]
+BETTER_AUTH_URL = "https://scribe-auth-worker.marcpadz.workers.dev"
+APP_NAME = "NeoScriber"
+
+# Secrets (NEVER commit): npx wrangler secret put GEMINI_API_KEY / RESEND_API_KEY / BETTER_AUTH_SECRET
