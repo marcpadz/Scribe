@@ -9,11 +9,21 @@ Record from your mic, upload a file, paste a link, or import from Google Drive �
 ```bash
 npm install
 cp .env.example .env.local
-# Fill in GEMINI_API_KEY and GOOGLE_CLIENT_ID
+# Fill in GEMINI_API_KEY and GOOGLE_CLIENT_ID in .env.local
 npm run dev
 ```
 
-Open http://localhost:3000
+Open http://localhost:5173 (or the port Vite prints).
+
+> **Without a valid `GEMINI_API_KEY` in `.env.local`, transcription/chat will fail with
+> "API Key is missing" and the workspace shows a red model indicator.** The Google Drive
+> "Continue with Google" button stays disabled until `GOOGLE_CLIENT_ID` is set.
+
+### Getting the credentials
+- `GEMINI_API_KEY` — free key from https://aistudio.google.com/app/apikey
+- `GOOGLE_CLIENT_ID` — create an **OAuth 2.0 Client ID** (Web application) at
+  https://console.cloud.google.com/apis/credentials. Add your dev origin
+  (e.g. `http://localhost:5173`) to the authorized JavaScript origins.
 
 ## Environment Variables
 

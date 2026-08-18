@@ -1,11 +1,15 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { TranscriptData } from "../types";
 
-const MODELS = {
+export const MODELS = {
   transcription: 'gemma-4-31b-it',
   videoAnalysis: 'gemma-4-31b-it',
   chat: 'gemma-4-31b-it',
 } as const;
+
+export const isApiKeyConfigured = (): boolean => {
+  return Boolean(process.env.API_KEY && process.env.API_KEY.length > 0);
+};
 
 const getAiClient = () => {
     const apiKey = process.env.API_KEY;

@@ -8,7 +8,8 @@ import { LoginPage } from './components/LoginPage';
 import { ChatBot } from './components/ChatBot';
 import { ThemeToggle } from './components/ThemeToggle';
 import { DrivePicker } from './components/DrivePicker';
-import { transcribeAudio, analyzeVideoFrames } from './services/geminiService';
+import ModelIndicator from './components/ModelIndicator';
+import { transcribeAudio, analyzeVideoFrames, isApiKeyConfigured } from './services/geminiService';
 import { TranscriptData, PlaybackSpeed, Bookmark as BookmarkType, User, Project } from './types';
 import { blobToBase64, formatTime, sliceAudioBuffer, resampleAndSliceAudio, extractAudioFromVideo } from './utils/audioUtils';
 import { extractVideoFrames } from './utils/videoUtils';
@@ -36,6 +37,7 @@ const App: React.FC = () => {
   const [processingProgress, setProcessingProgress] = useState(0);
   const [processingStatus, setProcessingStatus] = useState("");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [apiReady, setApiReady] = useState<boolean>(isApiKeyConfigured());
   
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>([]);
   const [selectedSegmentIndices, setSelectedSegmentIndices] = useState<Set<number>>(new Set());
@@ -847,6 +849,7 @@ const App: React.FC = () => {
 
         <ChatBot transcriptContext={getTranscriptText()} />
         <ThemeToggle />
+        <ModelIndicator ready={apiReady} mediaType={mediaType} />
       </main>
     </div>
   );
