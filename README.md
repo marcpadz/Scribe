@@ -1,4 +1,3 @@
-<!-- deploy trigger -->
 # Scribe (NeoScriber)
 
 A neo-brutalist audio/video transcription web app, powered by Google's Gemma 4.
