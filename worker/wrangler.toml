@@ -1,12 +1,13 @@
 name = "scribe-auth-worker"
 main = "src/index.ts"
 compatibility_date = "2026-02-07"
+compatibility_flags = ["nodejs_compat"]
 
 # D1 database for users / sessions / verification
 [[d1_databases]]
 binding = "DB"
 database_name = "scribe-auth-db"
-database_id = "REPLACE_WITH_YOUR_D1_ID"  # run: npx wrangler d1 create scribe-auth-db
+database_id = "c6d970d2-6d06-433f-84fe-95151814d153"
 
 [vars]
 BETTER_AUTH_URL = "https://scribe-auth-worker.marcpadz.workers.dev"
