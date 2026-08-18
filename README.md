@@ -1,20 +1,56 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Scribe (NeoScriber)
 
-# Run and deploy your AI Studio app
+A neo-brutalist audio/video transcription web app, powered by Google's Gemma 4.
 
-This contains everything you need to run your app locally.
+Record from your mic, upload a file, paste a link, or import from Google Drive — then chat with an AI assistant about your transcript.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1X_h3kxs47sj29_uV5lKkpOjN5MEjE2mg
+## Quick Start
 
-## Run Locally
+```bash
+npm install
+cp .env.example .env.local
+# Fill in GEMINI_API_KEY and GOOGLE_CLIENT_ID
+npm run dev
+```
 
-**Prerequisites:**  Node.js
+Open http://localhost:3000
 
+## Environment Variables
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | ✅ Yes | Google AI Studio API key (free tier). Get one at https://aistudio.google.com/app/apikey |
+| `GOOGLE_CLIENT_ID` | ✅ For Drive features | OAuth 2.0 Client ID from [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Must include authorized origins. |
+
+See `.env.example` for the template.
+
+## Models
+
+Transcription, video analysis, and chat all use **Gemma 4 31B** (`gemma-4-31b-it`) via the `@google/genai` client — a verified Google AI Studio model ([docs](https://ai.google.dev/gemma/docs/core)).
+
+## Features
+
+- **Record** from your microphone
+- **Upload** audio/video files (WAV, MP3, MP4, MOV)
+- **Import from URL** — direct links to media files; YouTube/TikTok/IG/Twitter/X via the proxy
+- **Google Drive** — save/open projects and import media from your Drive
+- **Chunked transcription** — 10-minute chunks with progress tracking
+- **Video frame analysis** — extract frames and ask the AI about visuals
+- **AI Chat** — ask Gemini about your transcript
+- **Bookmarks** — mark important moments
+- **Clip export** — export a WAV segment as audio
+- **Dark mode** — toggle from the bottom-left button
+
+## Deploy to Cloudflare Pages
+
+1. Build: `npm run build`
+2. Push to Cloudflare Pages (or `wrangler pages deploy dist`)
+3. The Pages Function at `functions/proxy.ts` will run automatically
+
+## Tech Stack
+
+- Vite + React 19 + TypeScript
+- Tailwind CSS v3 (PostCSS build, no CDN)
+- `@google/genai` for transcription / chat / analysis
+- Cloudflare Pages for hosting
+- `lucide-react` for icons

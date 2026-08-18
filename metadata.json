@@ -1,6 +1,6 @@
 {
-  "name": "NeoScriber",
-  "description": "A neo-brutalist audio transcription tool with auto-following text, bookmarking, and audio clipping capabilities powered by Gemini.",
+  "name": "neoscriber",
+  "description": "A neo-brutalist audio transcription tool with auto-following text, bookmarking, and audio clipping capabilities powered by Gemma.",
   "requestFramePermissions": [
     "microphone"
   ]

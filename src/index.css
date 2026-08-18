@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-left: 2px solid black;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-left: 2px solid #555;
+}
+::-webkit-scrollbar-thumb {
+  background: #000;
+  border: 2px solid #f1f1f1;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #fff;
+  border: 2px solid #1a1a1a;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #333;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #ccc;
+}

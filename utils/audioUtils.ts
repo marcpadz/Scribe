@@ -136,3 +136,90 @@ const bufferToWav = (abuffer: AudioBuffer): Blob => {
     pos += 4;
   }
 };
+
+/**
+ * Extract audio from a video blob using captureStream + MediaRecorder.
+ * Returns an audio/webm blob suitable for decodeAudioData / transcription.
+ */
+export const extractAudioFromVideo = async (videoBlob: Blob): Promise<Blob> => {
+  const videoUrl = URL.createObjectURL(videoBlob);
+
+  const video = document.createElement('video');
+  video.src = videoUrl;
+  video.muted = true;
+  video.preload = 'auto';
+  video.crossOrigin = 'anonymous';
+
+  await new Promise<void>((resolve, reject) => {
+    const onReady = () => {
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('error', onError);
+      resolve();
+    };
+    const onError = () => {
+      video.removeEventListener('loadedmetadata', onReady);
+      video.removeEventListener('error', onError);
+      reject(new Error('Video failed to load — format may be unsupported.'));
+    };
+    video.addEventListener('loadedmetadata', onReady);
+    video.addEventListener('error', onError);
+  });
+
+  const captureStream = (video as any).captureStream || (video as any).mozCaptureStream;
+  if (!captureStream) {
+    URL.revokeObjectURL(videoUrl);
+    throw new Error('Browser does not support video audio capture. Please use Chrome or Edge.');
+  }
+
+  const stream = captureStream.call(video);
+  const audioTracks = stream.getAudioTracks();
+  if (!audioTracks.length) {
+    URL.revokeObjectURL(videoUrl);
+    throw new Error('This video has no audio track.');
+  }
+
+  const audioStream = new MediaStream(audioTracks);
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm';
+
+  const recorder = new MediaRecorder(audioStream, { mimeType });
+  const chunks: Blob[] = [];
+
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      const out = new Blob(chunks, { type: mimeType });
+      URL.revokeObjectURL(videoUrl);
+      resolve(out);
+    };
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    recorder.onstop = done;
+    recorder.onerror = () => {
+      URL.revokeObjectURL(videoUrl);
+      reject(new Error('Audio capture failed.'));
+    };
+
+    recorder.start(200);
+
+    const playPromise = video.play();
+    if (playPromise) {
+      playPromise.catch(() => {
+        /* muted autoplay may still be rejected by some browsers */
+      });
+    }
+
+    const finish = () => {
+      if (recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+    };
+
+    video.onended = finish;
+    const timeoutMs = Math.max((video.duration || 0) * 1000 + 3000, 15000);
+    setTimeout(finish, timeoutMs);
+  });
+};

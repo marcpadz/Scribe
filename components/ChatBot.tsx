@@ -48,7 +48,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ transcriptContext }) => {
         const response = await chatWithGemini(apiHistory, userMsg, transcriptContext);
         setMessages([...newHistory, { role: 'model', text: response }]);
     } catch (e) {
-        setMessages([...newHistory, { role: 'model', text: "Error: Could not connect to Gemini." }]);
+        setMessages([...newHistory, { role: 'model', text: "Error: Could not connect to the model." }]);
     } finally {
         setIsLoading(false);
     }
@@ -97,7 +97,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ transcriptContext }) => {
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-zinc-900">
                     {messages.length === 0 && (
                         <div className="text-center text-gray-400 text-sm mt-8">
-                            <p className="mb-2">👋 Hi! I'm Gemini.</p>
+                            <p className="mb-2">👋 Hi! I'm Gemma.</p>
                             <p>Ask me anything about your transcript or video.</p>
                         </div>
                     )}
@@ -110,7 +110,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ transcriptContext }) => {
                             }`}>
                                 <div className="flex items-center gap-1 mb-1 opacity-70 text-[10px] font-bold uppercase">
                                     {msg.role === 'user' ? <User size={10}/> : <Bot size={10}/>}
-                                    {msg.role === 'user' ? 'You' : 'Gemini'}
+                                    {msg.role === 'user' ? 'You' : 'Gemma'}
                                 </div>
                                 <div className="whitespace-pre-wrap">{msg.text}</div>
                             </div>
@@ -133,7 +133,7 @@ export const ChatBot: React.FC<ChatBotProps> = ({ transcriptContext }) => {
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Ask Gemini..."
+                            placeholder="Ask Gemma..."
                             className="w-full pl-3 pr-10 py-2 bg-gray-100 dark:bg-zinc-800 border-2 border-black dark:border-white focus:outline-none focus:bg-white dark:focus:bg-zinc-700 resize-none text-sm h-10 min-h-[40px] max-h-24 placeholder:text-gray-400 dark:text-white"
                         />
                         <button 

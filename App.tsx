@@ -10,7 +10,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { DrivePicker } from './components/DrivePicker';
 import { transcribeAudio, analyzeVideoFrames } from './services/geminiService';
 import { TranscriptData, PlaybackSpeed, Bookmark as BookmarkType, User, Project } from './types';
-import { blobToBase64, formatTime, sliceAudioBuffer, resampleAndSliceAudio } from './utils/audioUtils';
+import { blobToBase64, formatTime, sliceAudioBuffer, resampleAndSliceAudio, extractAudioFromVideo } from './utils/audioUtils';
 import { extractVideoFrames } from './utils/videoUtils';
 import { initGoogleServices, handleGoogleLogin, createDriveFile, updateDriveFile, getDriveFileContent, DriveFile } from './services/driveService';
 
@@ -364,7 +364,22 @@ const App: React.FC = () => {
     setAbortController(controller);
 
     try {
-      const arrayBuffer = await blob.arrayBuffer();
+      // If this is a video, extract the audio track first
+      let audioSource = blob;
+      if (mediaType === 'video') {
+        try {
+          setProcessingStatus("Extracting audio from video...");
+          setProcessingProgress(5);
+          audioSource = await extractAudioFromVideo(blob);
+        } catch (extractErr: any) {
+          console.error("Audio extraction failed", extractErr);
+          setProcessingStatus(`Audio extraction failed: ${extractErr.message || 'unsupported format'}`);
+          setIsProcessing(false);
+          return;
+        }
+      }
+
+      const arrayBuffer = await audioSource.arrayBuffer();
       if (controller.signal.aborted) return;
 
       if (audioContextRef.current) {
@@ -629,8 +644,8 @@ const App: React.FC = () => {
 
                         <div className="mt-12 text-center text-gray-500 dark:text-gray-400 font-mono text-sm">
                             <div className="flex flex-col gap-1 text-xs">
-                                <span className="font-bold text-black bg-neo-green px-2 py-0.5 self-center inline-block transform rotate-1 border border-black shadow-neo-sm">Gemini 3.0 Pro Powered</span>
-                                <span className="mt-2 opacity-50">Transcribes, summarizes, and answers questions from your media.</span>
+                                <span className="font-bold text-black bg-neo-green px-2 py-0.5 self-center inline-block transform rotate-1 border border-black shadow-neo-sm">Gemma 4 31B</span>
+                                <span className="mt-2 opacity-50">Transcribes your media. Chat with AI about the transcript.</span>
                             </div>
                         </div>
                     </div>

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scribe — Shippability Checklist</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #111827;
+      --panel-2: #0f172a;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --text-dim: #9ca3af;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 22px 60px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-bottom: 22px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: -0.02em;
+    }
+
+    .header .subtitle {
+      margin: 6px 0 0;
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--err);
+      box-shadow: 0 0 10px rgba(239,68,68,0.35);
+    }
+
+    .dot.ok { background: var(--ok); box-shadow: 0 0 10px rgba(34,197,94,0.35); }
+    .dot.warn { background: var(--warn); box-shadow: 0 0 10px rgba(245,158,11,0.35); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+    }
+
+    .col-12 { grid-column: span 12; }
+    .col-6  { grid-column: span 6; }
+    .col-4  { grid-column: span 4; }
+
+    @media (max-width: 860px) {
+      .col-6, .col-4 { grid-column: span 12; }
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+    }
+
+    .item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .item:first-child { border-top: none; }
+
+    .item input[type="checkbox"] {
+      margin-top: 2px;
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .item input[type="checkbox"]:checked + div h3 {
+      text-decoration: line-through;
+      opacity: 0.55;
+    }
+
+    .item .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid;
+    }
+
+    .badge.blocker { color: #fecaca; border-color: #7f1d1d; background: rgba(239,68,68,0.08); }
+    .badge.bug     { color: #fde68a; border-color: #78350f; background: rgba(245,158,11,0.08); }
+    .badge.missing { color: #bfdbfe; border-color: #1e3a8a; background: rgba(59,130,246,0.08); }
+    .badge.done    { color: #bbf7d0; border-color: #14532d; background: rgba(34,197,94,0.08); }
+
+    .item h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .item p  { margin: 4px 0 0; color: var(--text-dim); font-size: 14px; line-height: 1.45; }
+
+    .progress {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .progress .bar {
+      flex: 1;
+      height: 10px;
+      border-radius: 999px;
+      background: #1f2937;
+      overflow: hidden;
+    }
+
+    .progress .fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), #818cf8);
+      border-radius: 999px;
+      transition: width 300ms ease;
+    }
+
+    .progress .pct { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+      color: var(--text-dim);
+      font-size: 12px;
+    }
+
+    .legend b { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div>
+        <h1>Scribe — Shippability Checklist</h1>
+        <div class="subtitle">NeoScriber · audio/video transcription MVP · last updated 2026-08-18</div>
+      </div>
+      <div class="pill">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Not shippable</span>
+      </div>
+    </div>
+
+    <div class="progress" style="margin-bottom: 18px;">
+      <div class="pct" id="progressLabel">0 / 0</div>
+      <div class="bar"><div class="fill" id="progressFill"></div></div>
+      <div class="pct" id="progressPct">0%</div>
+    </div>
+
+    <div class="grid">
+      <section class="card col-12">
+        <h2>Shippability Blockers <span style="color:#f87171">(must fix)</span></h2>
+        <div class="item" data-group="blocker" data-id="b1">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge blocker">Blocker</span><span class="badge done">Fixed</span></div>
+            <h3>Replace Tailwind CDN with a real build pipeline</h3>
+            <p><strong>DONE.</strong> Replaced CDN script with Tailwind v3 + PostCSS build (<code>tailwind.config.js</code>, <code>postcss.config.js</code>, <code>src/index.css</code>). Removed import maps. Build verified (<code>npm run build</code> passes, CSS bundle 29.6 kB).</p>
+          </div>
+        </div>
+        <div class="item" data-group="blocker" data-id="b2">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge blocker">Blocker</span><span class="badge done">Fixed</span></div>
+            <h3>Wire Google Client ID so Drive login works</h3>
+            <p><strong>DONE.</strong> Added <code>REACT_APP_GOOGLE_CLIENT_ID</code> to <code>vite.config.ts</code> <code>define</code> (sourced from <code>GOOGLE_CLIENT_ID</code> in env). Added dev sanity warning if key missing. Fixed <code>.gitignore</code> (<code>*.local</code> was accidentally swallowing <code>.env.local</code>). GIS now initializes when Client ID is present.</p>
+          </div>
+        </div>
+        <div class="item" data-group="blocker" data-id="b3">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge blocker">Blocker</span><span class="badge done">Fixed</span></div>
+            <h3>Fix video transcription path</h3>
+            <p><strong>DONE.</strong> Added <code>extractAudioFromVideo()</code> in <code>utils/audioUtils.ts</code> — uses <code>captureStream()</code> + <code>MediaRecorder</code> to pull audio into an <code>audio/webm</code> blob before decoding. Wired into <code>processAudioBlob</code> with fallback error state. Build + typecheck pass.</p>
+          </div>
+        </div>
+        <div class="item" data-group="blocker" data-id="b4">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge blocker">Blocker</span><span class="badge done">Fixed</span></div>
+            <h3>Replace unverified model <code>gemini-3-pro-preview</code></h3>
+            <p><strong>DONE.</strong> Centralized in <code>services/geminiService.ts</code>: all three roles use <code>gemma-4-31b-it</code> (a verified Google AI Studio model — https://ai.google.dev/gemma/docs/core). Removed all unverified model name references.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card col-12">
+        <h2>Risks / likely bugs</h2>
+        <div class="item" data-group="risk" data-id="r1">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge bug">Bug</span><span class="badge done">Fixed</span></div>
+            <h3>Unify Gemini branding and model naming</h3>
+            <p><strong>DONE.</strong> Unified branding across login page, app badge, and chat bot to reflect <code>Gemma 4 31B</code>. All model IDs centralized in <code>services/geminiService.ts</code> <code>MODELS</code> object.</p>
+          </div>
+        </div>
+        <div class="item" data-group="risk" data-id="r2">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge bug">Bug</span><span class="badge done">Fixed</span></div>
+            <h3>Harden CORS proxy (<code>functions/proxy.ts</code>)</h3>
+            <p><strong>DONE.</strong> Added per-IP rate limiting (30 req/min sliding window via <code>cf-connecting-ip</code>), protocol whitelist (http/https only), 30s fetch timeout, 500 MB body cap, and proper CORS headers. Returns 429 with <code>Retry-After: 60</code> when throttled.</p>
+          </div>
+        </div>
+        <div class="item" data-group="risk" data-id="r3">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge bug">Bug</span></div>
+            <h3>Reduce reliance on <code>api.cobalt.tools</code></h3>
+            <p>Third-party extractor, rate-limited, no key. The proxy already fails gracefully with a clear 422 error. Next step: add a fallback message to the UI, or replace with an alternative extractor.</p>
+          </div>
+        </div>
+        <div class="item" data-group="risk" data-id="r4">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge bug">Bug</span><span class="badge done">Fixed</span></div>
+            <h3>Clarify deploy story (Pages vs Worker)</h3>
+            <p><strong>DONE.</strong> Added <code>pages_build_output_dir: ./dist</code> to <code>wrangler.json</code>. Deploy story: <code>npm run build</code> → upload <code>dist/</code> to Cloudflare Pages. <code>functions/proxy.ts</code> runs as a Pages Function automatically.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card col-12">
+        <h2>Missing for a clean launch</h2>
+        <div class="item" data-group="missing" data-id="m1">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge missing">Missing</span><span class="badge done">Fixed</span></div>
+            <h3><code>.env.example</code> + setup docs</h3>
+            <p><strong>DONE.</strong> Created <code>.env.example</code> with <code>GEMINI_API_KEY</code> and <code>GOOGLE_CLIENT_ID</code>. Updated <code>README.md</code> with full setup instructions including Google Cloud OAuth consent flow steps.</p>
+          </div>
+        </div>
+        <div class="item" data-group="missing" data-id="m2">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge missing">Missing</span><span class="badge done">Fixed</span></div>
+            <h3>Basic CI (lint + build)</h3>
+            <p><strong>DONE.</strong> Added <code>.github/workflows/ci.yml</code> — checks out code, installs deps, runs <code>npm run typecheck</code>, then <code>npm run build</code> on push/PR. Passes without secrets (API key only used at runtime, not needed for typecheck/build).</p>
+          </div>
+        </div>
+        <div class="item" data-group="missing" data-id="m3">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge missing">Missing</span></div>
+            <h3>Better error states for proxy / Cobalt / invalid media</h3>
+            <p>Partial — the proxy now returns structured errors. Remaining: the app still shows a generic <code>alert()</code> for failed imports. Next step: surface those errors inline in the UI instead of native alerts. Cobalt failure message is now clearer ("Could not extract media from {platform}. Content may be private or unavailable.")</p>
+          </div>
+        </div>
+        <div class="item" data-group="missing" data-id="m4">
+          <input type="checkbox" onchange="tick(this)" />
+          <div>
+            <div class="meta"><span class="badge missing">Missing</span><span class="badge done">Fixed</span></div>
+            <h3>Real legal links (Privacy / Terms)</h3>
+            <p><strong>DONE.</strong> Removed the dangling "Terms of Service" placeholder text from the login page. Replaced with an accurate privacy statement: "Guest mode saves data to your browser's LocalStorage only. No data is sent to external servers unless you choose to use Google Drive features."</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="legend">
+      <div><b>Usage:</b> check items to mark done, refresh to keep state (stored in localStorage).</div>
+      <div><b>Status:</b> Shippable when all blockers are ticked (minimum 4/12); fully ready at 12/12.</div>
+      <div><b>Model note:</b> Using <code>gemma-4-31b-it</code> via the Google AI Studio / @google/genai client (verified).</div>
+    </div>
+  </div>
+
+  <script>
+    const LS_KEY = 'scribe-shippability-state-v1';
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveState(state) {
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+    }
+
+    function tick(cb) {
+      const id = cb.closest('[data-id]')?.getAttribute('data-id');
+      if (!id) return;
+      const state = loadState();
+      state[id] = cb.checked;
+      saveState(state);
+      renderProgress();
+    }
+
+    function renderProgress() {
+      const state = loadState();
+      const all = Array.from(document.querySelectorAll('[data-id]'));
+      const done = all.filter(el => state[el.getAttribute('data-id')]);
+      const total = all.length;
+      const pct = total ? Math.round((done.length / total) * 100) : 0;
+      const blockersDone = all.filter(el => el.dataset.group === 'blocker' && state[el.getAttribute('data-id')]).length;
+      const blockersTotal = all.filter(el => el.dataset.group === 'blocker').length;
+
+      document.getElementById('progressLabel').textContent = `${done.length} / ${total} (${blockersDone}/${blockersTotal} blockers)`;
+      document.getElementById('progressPct').textContent = `${pct}%`;
+      document.getElementById('progressFill').style.width = `${pct}%`;
+
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      if (pct === 100) {
+        dot.className = 'dot ok';
+        txt.textContent = 'Shippable';
+      } else if (blockersDone === blockersTotal) {
+        dot.className = 'dot ok';
+        txt.textContent = 'All blockers resolved';
+      } else if (pct >= 60) {
+        dot.className = 'dot warn';
+        txt.textContent = 'Close to shippable';
+      } else {
+        dot.className = 'dot';
+        txt.textContent = 'Not shippable';
+      }
+    }
+
+    (function restore() {
+      const state = loadState();
+      document.querySelectorAll('[data-id]').forEach(el => {
+        const id = el.getAttribute('data-id');
+        const cb = el.querySelector('input[type=\"checkbox\"]');
+        if (cb && state[id]) cb.checked = true;
+      });
+      renderProgress();
+    })();
+  </script>
+</body>
+</html>

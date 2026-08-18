@@ -1,6 +1,12 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { TranscriptData } from "../types";
 
+const MODELS = {
+  transcription: 'gemma-4-31b-it',
+  videoAnalysis: 'gemma-4-31b-it',
+  chat: 'gemma-4-31b-it',
+} as const;
+
 const getAiClient = () => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
@@ -9,10 +15,9 @@ const getAiClient = () => {
     return new GoogleGenAI({ apiKey });
 };
 
-export const transcribeAudio = async (base64Audio: string): Promise<TranscriptData> => {
+export const transcribeAudio = async (base64Audio: string, mimeType = 'audio/wav'): Promise<TranscriptData> => {
   const ai = getAiClient();
 
-  // Schema for structured output (Array of segments)
   const responseSchema: Schema = {
     type: Type.OBJECT,
     properties: {
@@ -32,16 +37,14 @@ export const transcribeAudio = async (base64Audio: string): Promise<TranscriptDa
     required: ["segments"],
   };
 
-  const model = "gemini-2.5-flash"; 
-
   try {
     const response = await ai.models.generateContent({
-      model,
+      model: MODELS.transcription,
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: "audio/wav", 
+              mimeType: mimeType,
               data: base64Audio,
             },
           },
@@ -53,13 +56,13 @@ export const transcribeAudio = async (base64Audio: string): Promise<TranscriptDa
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
-        temperature: 0.2, 
+        temperature: 0.2,
       },
     });
 
     const text = response.text;
     if (!text) {
-        throw new Error("No response from Gemini");
+        throw new Error("No response from the model");
     }
 
     const parsed = JSON.parse(text) as TranscriptData;
@@ -72,9 +75,7 @@ export const transcribeAudio = async (base64Audio: string): Promise<TranscriptDa
 
 export const analyzeVideoFrames = async (frames: string[], prompt?: string): Promise<string> => {
     const ai = getAiClient();
-    const model = "gemini-3-pro-preview";
 
-    // Prepare image parts
     const imageParts = frames.map(frame => ({
         inlineData: {
             mimeType: "image/jpeg",
@@ -87,7 +88,7 @@ export const analyzeVideoFrames = async (frames: string[], prompt?: string): Pro
     };
 
     const response = await ai.models.generateContent({
-        model,
+        model: MODELS.videoAnalysis,
         contents: {
             parts: [...imageParts, textPart]
         }
@@ -98,19 +99,18 @@ export const analyzeVideoFrames = async (frames: string[], prompt?: string): Pro
 
 export const chatWithGemini = async (history: {role: string, parts: {text: string}[]}[], message: string, context: string): Promise<string> => {
     const ai = getAiClient();
-    const model = "gemini-3-pro-preview";
 
-    const systemInstruction = `You are NeoScriber's AI Assistant. 
+    const systemInstruction = `You are NeoScriber's AI Assistant.
     You have access to the transcript of the media file the user is working on.
-    
+
     TRANSCRIPT CONTEXT:
     ${context}
-    
-    Answer the user's questions based on the transcript context if applicable. 
+
+    Answer the user's questions based on the transcript context if applicable.
     Keep answers concise, helpful, and friendly.`;
 
     const chat = ai.chats.create({
-        model,
+        model: MODELS.chat,
         history: history,
         config: {
             systemInstruction

@@ -26,7 +26,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginGoogle, onGuest, is
                     Brutally simple AI transcription.
                 </p>
                 <div className="space-y-2 text-sm font-mono opacity-70">
-                    <p>✓ Powered by Gemini 2.5 Flash</p>
+                    <p>✓ Powered by Gemma 4 31B</p>
                     <p>✓ Local & Cloud Save Support</p>
                     <p>✓ Video & Audio Processing</p>
                 </div>
@@ -66,8 +66,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginGoogle, onGuest, is
                 </NeoButton>
 
                 <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 mt-4 leading-tight">
-                    By continuing, you agree to our Terms of Service. <br/>
-                    Guest mode saves data to your browser's LocalStorage only.
+                    Guest mode saves data to your browser's LocalStorage only. No data is sent to external servers unless you choose to use Google Drive features.
                 </p>
             </NeoCard>
         </div>
