@@ -80,10 +80,31 @@ async function loadModels(db: D1Database): Promise<EngineModels> {
 // keys without redeploying. The secret always wins as the source of truth if no
 // override is stored.
 const API_KEY_CONFIG_KEY = "gemini_api_key";
-async function loadApiKey(db: D1Database, secretKey: string): Promise<string> {
+
+// Read a string value from admin_config. Returns "" if unset so callers can
+// apply a fallback (the Worker secret) or a falsy check uniformly.
+async function getConfigValue(db: D1Database, key: string): Promise<string> {
   const row = await db.prepare(`SELECT value FROM admin_config WHERE key = ?`)
-    .bind(API_KEY_CONFIG_KEY).first<{ value: string }>();
-  return row?.value?.trim() ? row.value.trim() : secretKey;
+    .bind(key).first<{ value: string }>();
+  return row?.value?.trim() ?? "";
+}
+
+// Upsert an admin_config value, or delete the row when `value` is empty (so the
+// caller reverts to the Worker secret / default). Used for both API-key overrides.
+async function setConfigValue(db: D1Database, key: string, value: string): Promise<void> {
+  if (!value) {
+    await db.prepare(`DELETE FROM admin_config WHERE key = ?`).bind(key).run();
+    return;
+  }
+  await db.prepare(
+    `INSERT INTO admin_config (key, value, updatedAt) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
+  ).bind(key, value, nowIso()).run();
+}
+
+async function loadApiKey(db: D1Database, secretKey: string): Promise<string> {
+  const override = await getConfigValue(db, API_KEY_CONFIG_KEY);
+  return override || secretKey;
 }
 
 function newId(): string {
@@ -297,12 +318,8 @@ const requireAdmin = async (c: any, next: any) => {
 // Config: current engine models + api key status
 app.get("/api/admin/config", requireAdmin, async (c) => {
   const models = await loadModels(c.env.DB);
-  const keyRow = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
-    .bind(API_KEY_CONFIG_KEY).first<{ value: string }>();
-  const keyOverride = Boolean(keyRow?.value?.trim());
-  const resendRow = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
-    .bind("resend_api_key").first<{ value: string }>();
-  const resendOverride = Boolean(resendRow?.value?.trim());
+  const keyOverride = Boolean(await getConfigValue(c.env.DB, API_KEY_CONFIG_KEY));
+  const resendOverride = Boolean(await getConfigValue(c.env.DB, RESEND_KEY_CONFIG_KEY));
   return c.json({
     key: ADMIN_CONFIG_KEY,
     models,
@@ -334,17 +351,13 @@ app.get("/api/admin/apikey", requireAdmin, async (c) => {
 
 // API key: set/override (stored in admin_config; empty body clears the override)
 app.put("/api/admin/apikey", requireAdmin, async (c) => {
-  const body = await c.req.json<{ key?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ key?: string }>().catch((): { key?: string } => ({}));
   const value = (body.key ?? "").trim();
-  if (!value) {
-    await c.env.DB.prepare(`DELETE FROM admin_config WHERE key = ?`).bind(API_KEY_CONFIG_KEY).run();
-    return c.json({ overridden: false, message: "Reverted to Worker secret key" }, 200);
-  }
-  await c.env.DB.prepare(
-    `INSERT INTO admin_config (key, value, updatedAt) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
-  ).bind(API_KEY_CONFIG_KEY, value, nowIso()).run();
-  return c.json({ overridden: true, message: "API key override saved" }, 200);
+  await setConfigValue(c.env.DB, API_KEY_CONFIG_KEY, value);
+  return c.json(
+    { overridden: Boolean(value), message: value ? "API key override saved" : "Reverted to Worker secret key" },
+    200
+  );
 });
 
 // --- Resend (email) API key: same override pattern as the Gemini key ---
@@ -352,26 +365,21 @@ const RESEND_KEY_CONFIG_KEY = "resend_api_key";
 
 // Resend key: get current (returns only whether a key is configured, never the secret)
 app.get("/api/admin/resendkey", requireAdmin, async (c) => {
-  const row = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
-    .bind(RESEND_KEY_CONFIG_KEY).first<{ value: string }>();
-  return c.json({ set: Boolean(c.env.RESEND_API_KEY), overridden: Boolean(row?.value?.trim()) }, 200);
+  const overridden = Boolean(await getConfigValue(c.env.DB, RESEND_KEY_CONFIG_KEY));
+  return c.json({ set: Boolean(c.env.RESEND_API_KEY), overridden }, 200);
 });
 
 // Resend key: set/override (stored in admin_config; empty body clears the override).
 // NOTE: we don't test-send here — verification emails are sent on sign-up/sign-in
 // via Better Auth, which reads this override at request time in auth.ts.
 app.put("/api/admin/resendkey", requireAdmin, async (c) => {
-  const body = await c.req.json<{ key?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ key?: string }>().catch((): { key?: string } => ({}));
   const value = (body.key ?? "").trim();
-  if (!value) {
-    await c.env.DB.prepare(`DELETE FROM admin_config WHERE key = ?`).bind(RESEND_KEY_CONFIG_KEY).run();
-    return c.json({ overridden: false, message: "Reverted to Worker secret key" }, 200);
-  }
-  await c.env.DB.prepare(
-    `INSERT INTO admin_config (key, value, updatedAt) VALUES (?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
-  ).bind(RESEND_KEY_CONFIG_KEY, value, nowIso()).run();
-  return c.json({ overridden: true, message: "Resend key override saved" }, 200);
+  await setConfigValue(c.env.DB, RESEND_KEY_CONFIG_KEY, value);
+  return c.json(
+    { overridden: Boolean(value), message: value ? "Resend key override saved" : "Reverted to Worker secret key" },
+    200
+  );
 });
 
 // Available Gemini models (for the dropdown). Fetched from the live API so the

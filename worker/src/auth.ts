@@ -144,5 +144,3 @@ export async function createAuth(db: D1Database, env: Env) {
     basePath: "/api/auth",
   });
 }
-
-export type Auth = ReturnType<typeof createAuth>;

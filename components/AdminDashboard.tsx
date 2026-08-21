@@ -106,7 +106,6 @@ const AdminDashboard: React.FC = () => {
   const [byType, setByType] = useState<{ type: string; n: number }[]>([]);
   const [models, setModels] = useState<EngineModels | null>(null);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
-  const [apiKeySet, setApiKeySet] = useState(false);
   const [apiKeyOverridden, setApiKeyOverridden] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [resendKeyOverridden, setResendKeyOverridden] = useState(false);
@@ -139,7 +138,6 @@ const AdminDashboard: React.FC = () => {
       setModels(h.models);
       setTables(t.tables);
       setModelOptions(m.models);
-      setApiKeySet(ak.set);
       setApiKeyOverridden(ak.overridden);
       setResendKeyOverridden(rk.overridden);
     } catch (err: any) {
