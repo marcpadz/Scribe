@@ -72,6 +72,17 @@ async function loadModels(db: D1Database): Promise<EngineModels> {
   }
 }
 
+// The Gemini API key lives in the Worker secret by default, but the admin can
+// override it at runtime via admin_config (key "gemini_api_key") — e.g. to swap
+// keys without redeploying. The secret always wins as the source of truth if no
+// override is stored.
+const API_KEY_CONFIG_KEY = "gemini_api_key";
+async function loadApiKey(db: D1Database, secretKey: string): Promise<string> {
+  const row = await db.prepare(`SELECT value FROM admin_config WHERE key = ?`)
+    .bind(API_KEY_CONFIG_KEY).first<{ value: string }>();
+  return row?.value?.trim() ? row.value.trim() : secretKey;
+}
+
 function newId(): string {
   return crypto.randomUUID();
 }
@@ -154,6 +165,7 @@ app.post("/api/transcribe", async (c) => {
   }
 
   const models = await loadModels(c.env.DB);
+  const apiKey = await loadApiKey(c.env.DB, c.env.GEMINI_API_KEY);
   const jobId = await logJob(c.env.DB, {
     type: "transcribe",
     userId: session?.user?.id,
@@ -164,7 +176,7 @@ app.post("/api/transcribe", async (c) => {
 
   try {
     const result = await transcribeAudio(
-      c.env.GEMINI_API_KEY,
+      apiKey,
       models,
       body.audioBase64,
       body.mimeType ?? "audio/wav"
@@ -196,6 +208,7 @@ app.post("/api/analyze", async (c) => {
   }
 
   const models = await loadModels(c.env.DB);
+  const apiKey = await loadApiKey(c.env.DB, c.env.GEMINI_API_KEY);
   const jobId = await logJob(c.env.DB, {
     type: "analyze",
     userId: session.user.id,
@@ -206,7 +219,7 @@ app.post("/api/analyze", async (c) => {
 
   try {
     const result = await analyzeVideoFrames(
-      c.env.GEMINI_API_KEY,
+      apiKey,
       models,
       body.frames,
       body.prompt
@@ -242,6 +255,7 @@ app.post("/api/chat", async (c) => {
   }
 
   const models = await loadModels(c.env.DB);
+  const apiKey = await loadApiKey(c.env.DB, c.env.GEMINI_API_KEY);
   const jobId = await logJob(c.env.DB, {
     type: "chat",
     userId: session.user.id,
@@ -251,7 +265,7 @@ app.post("/api/chat", async (c) => {
 
   try {
     const reply = await chatWithGemini(
-      c.env.GEMINI_API_KEY,
+      apiKey,
       models,
       body.history ?? [],
       body.message,
@@ -277,10 +291,18 @@ const requireAdmin = async (c: any, next: any) => {
   await next();
 };
 
-// Config: current engine models
+// Config: current engine models + api key status
 app.get("/api/admin/config", requireAdmin, async (c) => {
   const models = await loadModels(c.env.DB);
-  return c.json({ key: ADMIN_CONFIG_KEY, models, defaults: DEFAULT_MODELS }, 200);
+  const keyRow = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
+    .bind(API_KEY_CONFIG_KEY).first<{ value: string }>();
+  const keyOverride = Boolean(keyRow?.value?.trim());
+  return c.json({
+    key: ADMIN_CONFIG_KEY,
+    models,
+    defaults: DEFAULT_MODELS,
+    apiKey: { set: Boolean(c.env.GEMINI_API_KEY), overridden: keyOverride },
+  }, 200);
 });
 
 // Config: update engine models
@@ -294,6 +316,49 @@ app.put("/api/admin/config", requireAdmin, async (c) => {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
   ).bind(ADMIN_CONFIG_KEY, JSON.stringify(body), nowIso()).run();
   return c.json({ models: body }, 200);
+});
+
+// API key: get current (returns only whether a key is configured, never the secret)
+app.get("/api/admin/apikey", requireAdmin, async (c) => {
+  const row = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
+    .bind(API_KEY_CONFIG_KEY).first<{ value: string }>();
+  return c.json({ set: Boolean(c.env.GEMINI_API_KEY), overridden: Boolean(row?.value?.trim()) }, 200);
+});
+
+// API key: set/override (stored in admin_config; empty body clears the override)
+app.put("/api/admin/apikey", requireAdmin, async (c) => {
+  const body = await c.req.json<{ key?: string }>().catch(() => ({}));
+  const value = (body.key ?? "").trim();
+  if (!value) {
+    await c.env.DB.prepare(`DELETE FROM admin_config WHERE key = ?`).bind(API_KEY_CONFIG_KEY).run();
+    return c.json({ overridden: false, message: "Reverted to Worker secret key" }, 200);
+  }
+  await c.env.DB.prepare(
+    `INSERT INTO admin_config (key, value, updatedAt) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
+  ).bind(API_KEY_CONFIG_KEY, value, nowIso()).run();
+  return c.json({ overridden: true, message: "API key override saved" }, 200);
+});
+
+// Available Gemini models (for the dropdown). Fetched from the live API so the
+// list is always current. Audio-capable models are flagged for the transcription
+// dropdown; Gemma models are excluded from transcription (no audio modality).
+app.get("/api/admin/models", requireAdmin, async (c) => {
+  try {
+    const apiKey = await loadApiKey(c.env.DB, c.env.GEMINI_API_KEY);
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { headers: { "x-goog-api-key": apiKey } }
+    );
+    const data = (await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
+    const names = (data.models ?? [])
+      .map((m) => m.name.replace(/^models\//, ""))
+      .filter((n) => /gemini|gemma/i.test(n))
+      .sort();
+    return c.json({ models: names }, 200);
+  } catch (err: any) {
+    return c.json({ models: [], error: String(err?.message || err).slice(0, 200) }, 200);
+  }
 });
 
 // DB viewer: list tables (safe, read-only metadata)

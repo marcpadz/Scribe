@@ -75,12 +75,19 @@ export const adminApi = {
     return res.json() as Promise<Health>;
   },
   health: () => adminFetch<Health>("/api/admin/health"),
-  getConfig: () => adminFetch<{ models: EngineModels; defaults: EngineModels }>("/api/admin/config"),
+  getConfig: () => adminFetch<{ models: EngineModels; defaults: EngineModels; apiKey: { set: boolean; overridden: boolean } }>("/api/admin/config"),
   saveConfig: (models: EngineModels) =>
     adminFetch<{ models: EngineModels }>("/api/admin/config", {
       method: "PUT",
       body: JSON.stringify(models),
     }),
+  getApiKey: () => adminFetch<{ set: boolean; overridden: boolean }>("/api/admin/apikey"),
+  saveApiKey: (key: string) =>
+    adminFetch<{ overridden: boolean; message: string }>("/api/admin/apikey", {
+      method: "PUT",
+      body: JSON.stringify({ key }),
+    }),
+  listModels: () => adminFetch<{ models: string[]; error?: string }>("/api/admin/models"),
   tables: () => adminFetch<{ tables: string[] }>("/api/admin/db/tables"),
   table: (name: string, limit = 100, offset = 0) =>
     adminFetch<TableData>(

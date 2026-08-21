@@ -105,21 +105,28 @@ const AdminDashboard: React.FC = () => {
   const [jobStats, setJobStats] = useState<{ status: string; n: number }[]>([]);
   const [byType, setByType] = useState<{ type: string; n: number }[]>([]);
   const [models, setModels] = useState<EngineModels | null>(null);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [apiKeySet, setApiKeySet] = useState(false);
+  const [apiKeyOverridden, setApiKeyOverridden] = useState(false);
+  const [apiKeyValue, setApiKeyValue] = useState("");
   const [tables, setTables] = useState<string[]>([]);
   const [activeTable, setActiveTable] = useState<string | null>(null);
   const [tableData, setTableData] = useState<TableData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [keyMsg, setKeyMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [h, j, t] = await Promise.all([
+      const [h, j, t, m, ak] = await Promise.all([
         adminApi.health(),
         adminApi.jobs(150),
         adminApi.tables(),
+        adminApi.listModels(),
+        adminApi.getApiKey(),
       ]);
       setHealth(h);
       setJobs(j.jobs);
@@ -127,6 +134,9 @@ const AdminDashboard: React.FC = () => {
       setByType(j.byType);
       setModels(h.models);
       setTables(t.tables);
+      setModelOptions(m.models);
+      setApiKeySet(ak.set);
+      setApiKeyOverridden(ak.overridden);
     } catch (err: any) {
       setError(err?.message || "Failed to load dashboard");
     } finally {
@@ -164,6 +174,39 @@ const AdminDashboard: React.FC = () => {
       setSaving(false);
     }
   };
+
+  const saveKey = async () => {
+    setKeyMsg(null);
+    setError(null);
+    try {
+      const res = await adminApi.saveApiKey(apiKeyValue);
+      setKeyMsg(res.message);
+      setApiKeyValue("");
+      setApiKeyOverridden(res.overridden);
+      await refresh();
+    } catch (err: any) {
+      setError(err?.message || "Failed to save key");
+    }
+  };
+
+  const clearKey = async () => {
+    setKeyMsg(null);
+    try {
+      const res = await adminApi.saveApiKey("");
+      setKeyMsg(res.message);
+      setApiKeyOverridden(false);
+    } catch (err: any) {
+      setError(err?.message || "Failed to clear key");
+    }
+  };
+
+  // Gemma models have no audio modality, so exclude them from the transcription
+  // dropdown (they can't transcribe audio).
+  const transcriptionOptions = useMemo(
+    () => modelOptions.filter((m) => !/^gemma/i.test(m)),
+    [modelOptions]
+  );
+  const visionOptions = modelOptions;
 
   const logout = () => {
     clearAdminKey();
@@ -284,27 +327,72 @@ const AdminDashboard: React.FC = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Engine config */}
+          {/* Engine config + API key */}
           <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-xl p-4">
             <h2 className="text-sm font-bold uppercase tracking-wide mb-3 flex items-center gap-2"><Cpu className="w-4 h-4 text-[#FFE900]" /> Engine models</h2>
             {models && (
               <div className="space-y-3">
-                {(["transcription", "videoAnalysis", "chat"] as const).map((role) => (
-                  <label key={role} className="block">
-                    <span className="text-xs uppercase text-white/50">{role}</span>
-                    <input
-                      value={models[role]}
-                      onChange={(e) => setModels({ ...models, [role]: e.target.value })}
-                      className="w-full mt-1 px-2 py-2 text-sm rounded-lg bg-white/5 border border-white/10 focus:border-[#FFE900] outline-none font-mono"
-                    />
-                  </label>
-                ))}
+                <label className="block">
+                  <span className="text-xs uppercase text-white/50">transcription</span>
+                  <select
+                    value={models.transcription}
+                    onChange={(e) => setModels({ ...models, transcription: e.target.value })}
+                    className="w-full mt-1 px-2 py-2 text-sm rounded-lg bg-white/5 border border-white/10 focus:border-[#FFE900] outline-none font-mono"
+                  >
+                    {transcriptionOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs uppercase text-white/50">videoAnalysis</span>
+                  <select
+                    value={models.videoAnalysis}
+                    onChange={(e) => setModels({ ...models, videoAnalysis: e.target.value })}
+                    className="w-full mt-1 px-2 py-2 text-sm rounded-lg bg-white/5 border border-white/10 focus:border-[#FFE900] outline-none font-mono"
+                  >
+                    {visionOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs uppercase text-white/50">chat</span>
+                  <select
+                    value={models.chat}
+                    onChange={(e) => setModels({ ...models, chat: e.target.value })}
+                    className="w-full mt-1 px-2 py-2 text-sm rounded-lg bg-white/5 border border-white/10 focus:border-[#FFE900] outline-none font-mono"
+                  >
+                    {visionOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </label>
                 <button onClick={saveConfig} disabled={saving} className="w-full py-2 rounded-lg bg-[#FFE900] text-black font-bold text-sm disabled:opacity-60">
                   {saving ? "Saving…" : "Save config"}
                 </button>
                 <p className="text-[11px] text-white/40">Free tier cap: {health?.freeTierSeconds ?? 120}s. Changes apply to new jobs immediately.</p>
               </div>
             )}
+
+            <div className="mt-5 pt-4 border-t border-white/10">
+              <h3 className="text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2"><KeyRound className="w-4 h-4 text-[#4ECDC4]" /> Gemini API key</h3>
+              <p className="text-[11px] text-white/40 mb-2">
+                Source: {apiKeyOverridden ? "admin override (stored)" : "Worker secret"}. The secret value is never shown.
+              </p>
+              <input
+                type="password"
+                value={apiKeyValue}
+                onChange={(e) => setApiKeyValue(e.target.value)}
+                placeholder="paste a new key to override"
+                className="w-full px-2 py-2 text-sm rounded-lg bg-white/5 border border-white/10 focus:border-[#FFE900] outline-none font-mono"
+              />
+              <div className="flex gap-2 mt-2">
+                <button onClick={saveKey} disabled={!apiKeyValue} className="flex-1 py-2 rounded-lg bg-[#FFE900] text-black font-bold text-sm disabled:opacity-60">
+                  Save key
+                </button>
+                {apiKeyOverridden && (
+                  <button onClick={clearKey} className="px-3 py-2 rounded-lg bg-white/10 text-sm hover:bg-white/20">
+                    Revert
+                  </button>
+                )}
+              </div>
+              {keyMsg && <p className="text-[11px] text-green-400 mt-2">{keyMsg}</p>}
+            </div>
           </div>
         </div>
 
