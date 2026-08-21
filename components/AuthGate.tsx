@@ -159,15 +159,17 @@ const AuthGate: React.FC<{ onAuthed: () => void }> = ({ onAuthed }) => {
                 <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="" />
                 Continue with Google
               </button>
-
-              <p className="text-center text-sm text-white/60 mt-6">
-                {mode === 'signin' ? (
-                  <>New here? <button onClick={() => { setMode('signup'); setError(null); }} className="text-[#FFE900] font-semibold">Create an account</button></>
-                ) : (
-                  <>Have an account? <button onClick={() => { setMode('signin'); setError(null); }} className="text-[#FFE900] font-semibold">Sign in</button></>
-                )}
-              </p>
             </>
+          )}
+
+          {mode !== 'verify' && (
+            <p className="text-center text-sm text-white/60 mt-6">
+              {mode === 'signin' ? (
+                <>New here? <button onClick={() => { setMode('signup'); setError(null); }} className="text-[#FFE900] font-semibold">Create an account</button></>
+              ) : (
+                <>Have an account? <button onClick={() => { setMode('signin'); setError(null); }} className="text-[#FFE900] font-semibold">Sign in</button></>
+              )}
+            </p>
           )}
 
           <p className="text-[10px] text-center text-white/40 mt-6 leading-tight">
