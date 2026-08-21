@@ -12,14 +12,15 @@ interface ModelIndicatorProps {
  * Turns green when the API key is present (app is ready), red when not.
  */
 const ModelIndicator: React.FC<ModelIndicatorProps> = ({ ready, mediaType = 'audio' }) => {
-  const model = MODELS.transcription;
+  const model = mediaType === 'video' ? MODELS.videoAnalysis : MODELS.transcription;
+  const label = mediaType === 'video' ? 'Video Engine' : 'Audio Engine';
 
   return (
     <div
       className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 border-2 border-black dark:border-white px-3 py-2 rounded-lg shadow-neo-sm bg-neo-yellow dark:bg-neo-dark-card text-black dark:text-white transition-colors ${
         ready ? '' : 'animate-pulse'
       }`}
-      title={ready ? 'Ready to process media' : 'API key missing — see .env.local'}
+      title={ready ? 'Engine ready (provisioned server-side)' : 'Engine offline'}
     >
       {ready ? (
         <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-neo-green" />
@@ -28,9 +29,7 @@ const ModelIndicator: React.FC<ModelIndicatorProps> = ({ ready, mediaType = 'aud
       )}
       <Cpu className="w-4 h-4" />
       <div className="flex flex-col leading-tight">
-        <span className="text-xs font-bold uppercase tracking-wide">
-          {mediaType === 'video' ? 'Video Engine' : 'Audio Engine'}
-        </span>
+        <span className="text-xs font-bold uppercase tracking-wide">{label}</span>
         <span className="text-[11px] opacity-80">{model}</span>
       </div>
       <span

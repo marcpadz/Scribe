@@ -47,8 +47,8 @@ export const ChatBot: React.FC<ChatBotProps> = ({ transcriptContext }) => {
 
         const response = await chatWithGemini(apiHistory, userMsg, transcriptContext);
         setMessages([...newHistory, { role: 'model', text: response }]);
-    } catch (e) {
-        setMessages([...newHistory, { role: 'model', text: "Error: Could not connect to the model." }]);
+    } catch (e: any) {
+        setMessages([...newHistory, { role: 'model', text: `Error: ${e?.message || "Could not connect to the model."}` }]);
     } finally {
         setIsLoading(false);
     }

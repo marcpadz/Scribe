@@ -10,6 +10,7 @@
     "db:remote": "wrangler d1 execute scribe-auth-db --remote --file=./schema.sql"
   },
   "dependencies": {
+    "@google/genai": "^1.0.0",
     "better-auth": "^1.7.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",

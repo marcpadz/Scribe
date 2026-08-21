@@ -1,126 +1,83 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { TranscriptData } from "../types";
 
+/**
+ * Client-side proxy for the Gemma 4 31B engine.
+ *
+ * IMPORTANT: The Gemini API key is NEVER present in this bundle. The SPA now
+ * calls our Cloudflare Worker (VITE_AUTH_URL), which provisions the model
+ * server-side. The engine handles audio transcription, video understanding,
+ * and transcript-grounded chat — all via routes that keep the key on our
+ * server. No OAuth is required for the engine (auth is only for gating).
+ */
+
+// The Worker URL. In production this is set in .env.local / build env as
+// VITE_AUTH_URL. Falls back to a local worker for `npm run dev`.
+const WORKER_URL =
+  (import.meta.env.VITE_AUTH_URL as string | undefined) || "http://localhost:8787";
+
+// Kept for the ModelIndicator badge. Gemma 31B powers video understanding +
+// chat; Gemini Flash powers audio transcription (Gemma has no audio modality).
 export const MODELS = {
-  transcription: 'gemma-4-31b-it',
-  videoAnalysis: 'gemma-4-31b-it',
-  chat: 'gemma-4-31b-it',
+  transcription: "gemini-flash-latest",
+  videoAnalysis: "gemma-4-31b-it",
+  chat: "gemma-4-31b-it",
 } as const;
 
-export const isApiKeyConfigured = (): boolean => {
-  return Boolean(process.env.API_KEY && process.env.API_KEY.length > 0);
-};
+export const isApiKeyConfigured = (): boolean => true; // key is server-side now
 
-const getAiClient = () => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      throw new Error("API Key is missing");
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${WORKER_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const data = (await res.json()) as { error?: string };
+      if (data?.error) message = data.error;
+    } catch {
+      /* non-JSON error body */
     }
-    return new GoogleGenAI({ apiKey });
-};
-
-export const transcribeAudio = async (base64Audio: string, mimeType = 'audio/wav'): Promise<TranscriptData> => {
-  const ai = getAiClient();
-
-  const responseSchema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      segments: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            start: { type: Type.NUMBER, description: "Start time in seconds" },
-            end: { type: Type.NUMBER, description: "End time in seconds" },
-            text: { type: Type.STRING, description: "Transcribed text content" },
-          },
-          required: ["start", "end", "text"],
-        },
-      },
-    },
-    required: ["segments"],
-  };
-
-  try {
-    const response = await ai.models.generateContent({
-      model: MODELS.transcription,
-      contents: {
-        parts: [
-          {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Audio,
-            },
-          },
-          {
-            text: "Transcribe this audio accurately. Break it down into natural sentence or phrase segments with precise timestamps.",
-          },
-        ],
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-        temperature: 0.2,
-      },
-    });
-
-    const text = response.text;
-    if (!text) {
-        throw new Error("No response from the model");
-    }
-
-    const parsed = JSON.parse(text) as TranscriptData;
-    return parsed;
-  } catch (error) {
-    console.error("Transcription failed:", error);
-    throw error;
+    throw new Error(message);
   }
+  return res.json() as Promise<T>;
+}
+
+export const transcribeAudio = async (
+  base64Audio: string,
+  mimeType = "audio/wav",
+  durationSeconds?: number
+): Promise<TranscriptData> => {
+  const data = await postJSON<{ segments: TranscriptData["segments"] }>(
+    "/api/transcribe",
+    { audioBase64: base64Audio, mimeType, durationSeconds }
+  );
+  return { segments: data.segments };
 };
 
-export const analyzeVideoFrames = async (frames: string[], prompt?: string): Promise<string> => {
-    const ai = getAiClient();
-
-    const imageParts = frames.map(frame => ({
-        inlineData: {
-            mimeType: "image/jpeg",
-            data: frame
-        }
-    }));
-
-    const textPart = {
-        text: prompt || "Analyze these frames from a video. Describe what is happening, the mood, visual style, and any key information visible."
-    };
-
-    const response = await ai.models.generateContent({
-        model: MODELS.videoAnalysis,
-        contents: {
-            parts: [...imageParts, textPart]
-        }
-    });
-
-    return response.text || "No analysis generated.";
+export const analyzeVideoFrames = async (
+  frames: string[],
+  prompt?: string
+): Promise<string> => {
+  const data = await postJSON<{ analysis: string }>("/api/analyze", {
+    frames,
+    prompt,
+  });
+  return data.analysis;
 };
 
-export const chatWithGemini = async (history: {role: string, parts: {text: string}[]}[], message: string, context: string): Promise<string> => {
-    const ai = getAiClient();
-
-    const systemInstruction = `You are NeoScriber's AI Assistant.
-    You have access to the transcript of the media file the user is working on.
-
-    TRANSCRIPT CONTEXT:
-    ${context}
-
-    Answer the user's questions based on the transcript context if applicable.
-    Keep answers concise, helpful, and friendly.`;
-
-    const chat = ai.chats.create({
-        model: MODELS.chat,
-        history: history,
-        config: {
-            systemInstruction
-        }
-    });
-
-    const response = await chat.sendMessage({ message });
-    return response.text || "I couldn't generate a response.";
+export const chatWithGemini = async (
+  history: { role: string; parts: { text: string }[] }[],
+  message: string,
+  context: string
+): Promise<string> => {
+  const data = await postJSON<{ reply: string }>("/api/chat", {
+    history,
+    message,
+    context,
+  });
+  return data.reply;
 };

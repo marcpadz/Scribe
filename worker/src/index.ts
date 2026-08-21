@@ -1,5 +1,10 @@
 import { Hono } from "hono";
 import { createAuth } from "./auth";
+import {
+  transcribeAudio,
+  analyzeVideoFrames,
+  chatWithGemini,
+} from "./gemini";
 import type { D1Database } from "@cloudflare/workers-types";
 
 export interface Env {
@@ -23,6 +28,29 @@ app.all("/api/auth/*", async (c) => {
 // --- Feature gating: enforced server-side (never trust the client) ---
 const FREE_TIER_SECONDS = 120; // 2-minute cap for unauthenticated users
 
+// Credentialed CORS: only allow the Scribe front-end and local dev, and echo
+// credentials so auth cookies survive cross-origin. Refuse anonymous origins.
+const ALLOWED_ORIGINS = new Set([
+  "https://marcpadz.github.io",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://localhost:8787",
+]);
+
+app.use("*", async (c, next) => {
+  const origin = c.req.header("Origin");
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Access-Control-Allow-Credentials", "true");
+    c.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    c.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  }
+  if (c.req.method === "OPTIONS") {
+    return c.body(null, 204);
+  }
+  await next();
+});
+
 app.get("/api/me", async (c) => {
   const auth = createAuth(c.env.DB, c.env);
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -42,7 +70,8 @@ app.get("/api/me", async (c) => {
   }, 200);
 });
 
-// --- Transcribe proxy: key stays server-side; gating enforced here ---
+// --- Gemma 31B engine: audio transcription ---
+// Key stays server-side; gating enforced here. No OAuth required for the engine.
 app.post("/api/transcribe", async (c) => {
   const auth = createAuth(c.env.DB, c.env);
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
@@ -63,18 +92,78 @@ app.post("/api/transcribe", async (c) => {
     );
   }
 
-  // TODO: call Google GenAI with c.env.GEMINI_API_KEY here.
-  // The key never reaches the browser bundle.
-  return c.json(
-    { message: "Transcription endpoint ready (wire Gemini call here).", authed: isAuthed },
-    200
-  );
+  try {
+    const result = await transcribeAudio(
+      c.env.GEMINI_API_KEY,
+      body.audioBase64,
+      body.mimeType ?? "audio/wav"
+    );
+    return c.json({ ...result, authed: isAuthed }, 200);
+  } catch (err: any) {
+    console.error("Transcription failed:", err);
+    return c.json({ error: "Transcription failed. Please try again." }, 502);
+  }
 });
 
-// CORS for local dev (in prod, Pages + Worker share the same domain)
-app.use("*", async (c, next) => {
-  await next();
-  c.header("Access-Control-Allow-Origin", "*");
+// --- Gemma 31B engine: video understanding (frame analysis) ---
+app.post("/api/analyze", async (c) => {
+  const auth = createAuth(c.env.DB, c.env);
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session?.user) {
+    return c.json({ error: "Sign in to use video understanding." }, 401);
+  }
+
+  const body = await c.req
+    .json<{ frames: string[]; prompt?: string }>()
+    .catch(() => null);
+  if (!body?.frames?.length) {
+    return c.json({ error: "Missing frames" }, 400);
+  }
+
+  try {
+    const result = await analyzeVideoFrames(
+      c.env.GEMINI_API_KEY,
+      body.frames,
+      body.prompt
+    );
+    return c.json({ analysis: result }, 200);
+  } catch (err: any) {
+    console.error("Video analysis failed:", err);
+    return c.json({ error: "Video analysis failed. Please try again." }, 502);
+  }
+});
+
+// --- Gemma 31B engine: transcript-grounded chat ---
+app.post("/api/chat", async (c) => {
+  const auth = createAuth(c.env.DB, c.env);
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session?.user) {
+    return c.json({ error: "Sign in to use the assistant." }, 401);
+  }
+
+  const body = await c.req
+    .json<{
+      history: { role: string; parts: { text: string }[] }[];
+      message: string;
+      context: string;
+    }>()
+    .catch(() => null);
+  if (!body?.message) {
+    return c.json({ error: "Missing message" }, 400);
+  }
+
+  try {
+    const reply = await chatWithGemini(
+      c.env.GEMINI_API_KEY,
+      body.history ?? [],
+      body.message,
+      body.context ?? ""
+    );
+    return c.json({ reply }, 200);
+  } catch (err: any) {
+    console.error("Chat failed:", err);
+    return c.json({ error: "Chat failed. Please try again." }, 502);
+  }
 });
 
 export default app;

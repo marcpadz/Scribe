@@ -34,6 +34,9 @@ jobs:
         run: npm run typecheck
 
       - name: Build
+        env:
+          # Point the production SPA at the deployed auth/engine Worker.
+          VITE_AUTH_URL: https://scribe-auth-worker.marcpadz.workers.dev
         run: npm run build
 
       # GitHub Pages reads from /docs — copy the build output there

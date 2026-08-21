@@ -401,7 +401,7 @@ const App: React.FC = () => {
             const chunkBlob = await resampleAndSliceAudio(decodedBuffer, startTime, endTime);
             const base64 = await blobToBase64(chunkBlob);
             if (controller.signal.aborted) break;
-            const result = await transcribeAudio(base64);
+            const result = await transcribeAudio(base64, "audio/wav", decodedBuffer.duration);
             const adjustedSegments = result.segments.map(s => ({
                 ...s,
                 start: s.start + startTime,
@@ -409,8 +409,14 @@ const App: React.FC = () => {
             }));
             currentSegments = [...currentSegments, ...adjustedSegments];
             setTranscript({ segments: currentSegments });
-        } catch (chunkError) {
+        } catch (chunkError: any) {
             console.error(`Error processing chunk ${i + 1}`, chunkError);
+            // Surface hard gating errors (402) immediately instead of silently
+            // swallowing them as a "skipped segment".
+            if (chunkError?.message?.includes("2 minutes")) {
+                setProcessingStatus(chunkError.message);
+                break;
+            }
             setProcessingStatus(`Error in part ${i+1}. Skipping segment.`);
             currentSegments.push({
                 start: startTime,
@@ -454,9 +460,9 @@ const App: React.FC = () => {
           if (frames.length === 0) throw new Error("Could not extract frames");
           const result = await analyzeVideoFrames(frames);
           setVideoAnalysisResult(result);
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
-          alert("Failed to analyze video.");
+          alert(e?.message || "Failed to analyze video.");
       } finally {
           setIsVideoAnalyzing(false);
       }
