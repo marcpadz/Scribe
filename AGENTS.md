@@ -78,12 +78,17 @@ transcript · video frame analysis · light/dark theme · local save/open (.neos
    the raw blob; for `video/mp4` this is unreliable/throws in most browsers. Even when it
    works, `geminiService.transcribeAudio` always sends `mimeType: "audio/wav"`. Needs a
    robust audio-extraction path (e.g. `<audio>` + `captureStream`, or ffmpeg.wasm).
-4. **Unverified model `gemini-3-pro-preview`.** Used by `analyzeVideoFrames` and
-   `chatWithGemini`. If the name isn't live, both features 500. Verify/replace.
+4. **Model routing (RESOLVED 2026-08-21).** Engine is server-provisioned in
+   `worker/src/gemini.ts` (`c.env.GEMINI_API_KEY`), never client-side. Split by
+   modality: Gemma 4 31B (`gemma-4-31b-it`) powers video understanding + chat
+   (image input only — Gemma has NO audio modality); `gemini-flash-latest`
+   transcribes audio (returns structured JSON). SPA proxies via `/api/transcribe`,
+   `/api/analyze`, `/api/chat`. No OAuth for the engine; auth gates features.
 
 **Likely bugs / risks:**
-- Branding mismatch: login card says "Gemini 2.5 Flash", app badge says "Gemini 3.0 Pro
-  Powered", actual transcribe model is `gemini-2.5-flash`. Pick one truth.
+- Branding: app badge shows the engine model per media type (Audio = `gemini-flash-latest`,
+  Video = `gemma-4-31b-it`); chat/video-understanding run on Gemma 4 31B. Keep ModelIndicator
+  labels in sync with the `MODELS` object in `services/geminiService.ts`.
 - Open CORS proxy (`functions/proxy.ts`) has no auth/rate-limit → abuse vector once deployed.
 - Cobalt dependency (`api.cobalt.tools`) is third-party, rate-limited, no key → flaky.
 - `transcriptRef` declared in `App.tsx` but never used (dead code).
