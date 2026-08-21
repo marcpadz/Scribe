@@ -61,3 +61,25 @@ export const profile = sqliteTable("profile", {
   totalSecondsTranscribed: integer("totalSecondsTranscribed").notNull().default(0),
   createdAt: text("createdAt").notNull(),
 });
+
+// Admin key/value config (e.g. engine_models JSON)
+export const adminConfig = sqliteTable("admin_config", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});
+
+// Engine job log: every transcription/analyze/chat run is recorded so the
+// admin dashboard can monitor app processes, status and conditions.
+export const job = sqliteTable("job", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(), // 'transcribe' | 'analyze' | 'chat'
+  userId: text("userId"), // null for anonymous/free-tier
+  status: text("status").notNull(), // 'queued' | 'running' | 'done' | 'error'
+  model: text("model"), // model used for this run
+  durationSeconds: integer("durationSeconds"), // media length (transcribe)
+  frames: integer("frames"), // frame count (analyze)
+  error: text("error"), // error message if failed
+  createdAt: text("createdAt").notNull(),
+  finishedAt: text("finishedAt"),
+});

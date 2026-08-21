@@ -63,3 +63,29 @@ CREATE TABLE IF NOT EXISTS "profile" (
 CREATE INDEX IF NOT EXISTS "session_userId" ON "session"("userId");
 CREATE INDEX IF NOT EXISTS "account_userId" ON "account"("userId");
 CREATE INDEX IF NOT EXISTS "verification_identifier" ON "verification"("identifier");
+
+-- Admin key/value config (e.g. engine_models JSON)
+CREATE TABLE IF NOT EXISTS "admin_config" (
+  "key" TEXT PRIMARY KEY NOT NULL,
+  "value" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL
+);
+
+-- Engine job log: every transcription/analyze/chat run is recorded so the
+-- admin dashboard can monitor app processes, status and conditions.
+CREATE TABLE IF NOT EXISTS "job" (
+  "id" TEXT PRIMARY KEY NOT NULL,
+  "type" TEXT NOT NULL,                 -- 'transcribe' | 'analyze' | 'chat'
+  "userId" TEXT,                        -- null for anonymous/free-tier
+  "status" TEXT NOT NULL,               -- 'queued' | 'running' | 'done' | 'error'
+  "model" TEXT,                         -- model used for this run
+  "durationSeconds" INTEGER,            -- media length (transcribe)
+  "frames" INTEGER,                     -- frame count (analyze)
+  "error" TEXT,                         -- error message if failed
+  "createdAt" TEXT NOT NULL,
+  "finishedAt" TEXT
+);
+
+CREATE INDEX IF NOT EXISTS "job_type" ON "job"("type");
+CREATE INDEX IF NOT EXISTS "job_status" ON "job"("status");
+CREATE INDEX IF NOT EXISTS "job_createdAt" ON "job"("createdAt");

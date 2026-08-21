@@ -14,6 +14,10 @@ const authClient = createAuthClient({
 
 type Mode = 'signin' | 'signup' | 'verify';
 
+// Google OAuth is deferred until the app is registered with Google. When ready,
+// flip this to true and uncomment the social provider in worker/src/auth.ts.
+const GOOGLE_OAUTH_ENABLED = false;
+
 const AuthGate: React.FC<{ onAuthed: () => void }> = ({ onAuthed }) => {
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -139,7 +143,7 @@ const AuthGate: React.FC<{ onAuthed: () => void }> = ({ onAuthed }) => {
             </p>
           )}
 
-          {mode !== 'verify' && (
+          {mode !== 'verify' && GOOGLE_OAUTH_ENABLED && (
             <>
               <div className="flex items-center gap-3 my-5">
                 <div className="flex-1 h-px bg-white/10" />

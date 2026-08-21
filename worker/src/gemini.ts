@@ -1,25 +1,31 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 
 /**
- * Server-side Gemma 4 31B engine (provisioned by OUR server — the Gemini API
+ * Server-side AI engine (provisioned by OUR server — the Gemini API
  * key lives only in the Worker binding, never the browser bundle).
  *
- * Model split (verified against the live API on this key):
- *  - Gemma family (gemma-4-31b-it, gemma-4-26b-…) supports IMAGE input only.
- *    Audio modality is NOT enabled, so Gemma cannot transcribe audio.
- *  - Gemini Flash (gemini-flash-latest) accepts AUDIO + IMAGE and returns
- *    structured JSON — used for transcription.
+ * Default model split (verified against the live API on this key — both accept
+ * AUDIO + IMAGE):
+ *  - transcription: gemini-3.5-flash-lite  (audio transcription, structured JSON)
+ *  - videoAnalysis: gemini-3.1-flash-lite  (frame/video understanding)
+ *  - chat:         gemini-3.1-flash-lite   (transcript-grounded assistant)
  *
- * Therefore: Gemma 31B powers VIDEO UNDERSTANDING + CHAT (its strength);
- * a Gemini Flash model powers AUDIO TRANSCRIPTION. No OAuth involved in the
+ * These defaults can be overridden at runtime via the `admin_config` table
+ * (key = "engine_models") by the admin dashboard. No OAuth involved in the
  * engine — auth is only used for feature gating.
  */
 
-export const MODELS = {
-  transcription: "gemini-flash-latest", // audio-capable, structured JSON
-  videoAnalysis: "gemma-4-31b-it", // image-capable (Gemma)
-  chat: "gemma-4-31b-it", // Gemma handles grounded chat well
-} as const;
+export interface EngineModels {
+  transcription: string;
+  videoAnalysis: string;
+  chat: string;
+}
+
+export const DEFAULT_MODELS: EngineModels = {
+  transcription: "gemini-3.5-flash-lite",
+  videoAnalysis: "gemini-3.1-flash-lite",
+  chat: "gemini-3.1-flash-lite",
+};
 
 export interface TranscribeResult {
   segments: { start: number; end: number; text: string }[];
@@ -49,12 +55,13 @@ const transcribeSchema: Schema = {
 /** Audio transcription: base64 audio -> timestamped TranscriptData segments. */
 export const transcribeAudio = async (
   apiKey: string,
+  models: EngineModels,
   audioBase64: string,
   mimeType = "audio/wav"
 ): Promise<TranscribeResult> => {
   const ai = getAi(apiKey);
   const response = await ai.models.generateContent({
-    model: MODELS.transcription,
+    model: models.transcription,
     contents: {
       parts: [
         { inlineData: { mimeType, data: audioBase64 } },
@@ -82,6 +89,7 @@ export const transcribeAudio = async (
  */
 export const analyzeVideoFrames = async (
   apiKey: string,
+  models: EngineModels,
   frames: string[],
   prompt?: string
 ): Promise<string> => {
@@ -95,7 +103,7 @@ export const analyzeVideoFrames = async (
       "Analyze these frames from a video. Describe what is happening, the mood, visual style, and any key information visible.",
   };
   const response = await ai.models.generateContent({
-    model: MODELS.videoAnalysis,
+    model: models.videoAnalysis,
     contents: { parts: [...imageParts, textPart] },
   });
   return response.text || "No analysis generated.";
@@ -104,6 +112,7 @@ export const analyzeVideoFrames = async (
 /** Conversational assistant grounded in the transcript context. */
 export const chatWithGemini = async (
   apiKey: string,
+  models: EngineModels,
   history: { role: string; parts: { text: string }[] }[],
   message: string,
   context: string
@@ -119,7 +128,7 @@ Answer the user's questions based on the transcript context if applicable.
 Keep answers concise, helpful, and friendly.`;
 
   const chat = ai.chats.create({
-    model: MODELS.chat,
+    model: models.chat,
     history,
     config: { systemInstruction },
   });
