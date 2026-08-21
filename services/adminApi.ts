@@ -75,7 +75,7 @@ export const adminApi = {
     return res.json() as Promise<Health>;
   },
   health: () => adminFetch<Health>("/api/admin/health"),
-  getConfig: () => adminFetch<{ models: EngineModels; defaults: EngineModels; apiKey: { set: boolean; overridden: boolean } }>("/api/admin/config"),
+  getConfig: () => adminFetch<{ models: EngineModels; defaults: EngineModels; apiKey: { set: boolean; overridden: boolean }; resendKey: { set: boolean; overridden: boolean } }>("/api/admin/config"),
   saveConfig: (models: EngineModels) =>
     adminFetch<{ models: EngineModels }>("/api/admin/config", {
       method: "PUT",
@@ -84,6 +84,12 @@ export const adminApi = {
   getApiKey: () => adminFetch<{ set: boolean; overridden: boolean }>("/api/admin/apikey"),
   saveApiKey: (key: string) =>
     adminFetch<{ overridden: boolean; message: string }>("/api/admin/apikey", {
+      method: "PUT",
+      body: JSON.stringify({ key }),
+    }),
+  getResendKey: () => adminFetch<{ set: boolean; overridden: boolean }>("/api/admin/resendkey"),
+  saveResendKey: (key: string) =>
+    adminFetch<{ overridden: boolean; message: string }>("/api/admin/resendkey", {
       method: "PUT",
       body: JSON.stringify({ key }),
     }),

@@ -22,18 +22,15 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
-// --- Better Auth handler (mounted at /api/auth/*) ---
-app.all("/api/auth/*", async (c) => {
-  const auth = createAuth(c.env.DB, c.env);
-  return auth.handler(c.req.raw);
-});
-
 // --- Feature gating: enforced server-side (never trust the client) ---
 const FREE_TIER_SECONDS = 120; // 2-minute cap for unauthenticated users
 const ADMIN_CONFIG_KEY = "engine_models";
 
-// Credentialed CORS: only allow the Scribe front-end and local dev, and echo
-// credentials so auth cookies survive cross-origin. Refuse anonymous origins.
+// Credentialed CORS — MUST be mounted BEFORE the /api/auth/* route, otherwise
+// Hono runs the auth handler (a route) ahead of this middleware and the
+// preflight OPTIONS response ships without CORS headers, blocking cross-origin
+// auth calls. Only allow the Scribe front-end + local dev, echo credentials so
+// auth cookies survive cross-origin.
 const ALLOWED_ORIGINS = new Set([
   "https://marcpadz.github.io",
   "http://localhost:3000",
@@ -53,6 +50,12 @@ app.use("*", async (c, next) => {
     return c.body(null, 204);
   }
   await next();
+});
+
+// --- Better Auth handler (mounted after CORS so preflight passes) ---
+app.all("/api/auth/*", async (c) => {
+  const auth = await createAuth(c.env.DB, c.env);
+  return auth.handler(c.req.raw);
 });
 
 // --- Engine model config (admin-configurable, DB-backed with DEFAULT_MODELS fallback) ---
@@ -125,7 +128,7 @@ async function logJob(
 }
 
 app.get("/api/me", async (c) => {
-  const auth = createAuth(c.env.DB, c.env);
+  const auth = await createAuth(c.env.DB, c.env);
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session?.user) {
     return c.json({ authenticated: false, limitSeconds: FREE_TIER_SECONDS }, 200);
@@ -145,7 +148,7 @@ app.get("/api/me", async (c) => {
 
 // --- Gemma / Gemini engine: audio transcription ---
 app.post("/api/transcribe", async (c) => {
-  const auth = createAuth(c.env.DB, c.env);
+  const auth = await createAuth(c.env.DB, c.env);
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
 
   const body = await c.req
@@ -194,7 +197,7 @@ app.post("/api/transcribe", async (c) => {
 
 // --- Engine: video understanding (frame analysis) ---
 app.post("/api/analyze", async (c) => {
-  const auth = createAuth(c.env.DB, c.env);
+  const auth = await createAuth(c.env.DB, c.env);
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session?.user) {
     return c.json({ error: "Sign in to use video understanding." }, 401);
@@ -237,7 +240,7 @@ app.post("/api/analyze", async (c) => {
 
 // --- Engine: transcript-grounded chat ---
 app.post("/api/chat", async (c) => {
-  const auth = createAuth(c.env.DB, c.env);
+  const auth = await createAuth(c.env.DB, c.env);
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session?.user) {
     return c.json({ error: "Sign in to use the assistant." }, 401);
@@ -297,11 +300,15 @@ app.get("/api/admin/config", requireAdmin, async (c) => {
   const keyRow = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
     .bind(API_KEY_CONFIG_KEY).first<{ value: string }>();
   const keyOverride = Boolean(keyRow?.value?.trim());
+  const resendRow = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
+    .bind("resend_api_key").first<{ value: string }>();
+  const resendOverride = Boolean(resendRow?.value?.trim());
   return c.json({
     key: ADMIN_CONFIG_KEY,
     models,
     defaults: DEFAULT_MODELS,
     apiKey: { set: Boolean(c.env.GEMINI_API_KEY), overridden: keyOverride },
+    resendKey: { set: Boolean(c.env.RESEND_API_KEY), overridden: resendOverride },
   }, 200);
 });
 
@@ -338,6 +345,33 @@ app.put("/api/admin/apikey", requireAdmin, async (c) => {
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
   ).bind(API_KEY_CONFIG_KEY, value, nowIso()).run();
   return c.json({ overridden: true, message: "API key override saved" }, 200);
+});
+
+// --- Resend (email) API key: same override pattern as the Gemini key ---
+const RESEND_KEY_CONFIG_KEY = "resend_api_key";
+
+// Resend key: get current (returns only whether a key is configured, never the secret)
+app.get("/api/admin/resendkey", requireAdmin, async (c) => {
+  const row = await c.env.DB.prepare(`SELECT value FROM admin_config WHERE key = ?`)
+    .bind(RESEND_KEY_CONFIG_KEY).first<{ value: string }>();
+  return c.json({ set: Boolean(c.env.RESEND_API_KEY), overridden: Boolean(row?.value?.trim()) }, 200);
+});
+
+// Resend key: set/override (stored in admin_config; empty body clears the override).
+// NOTE: we don't test-send here — verification emails are sent on sign-up/sign-in
+// via Better Auth, which reads this override at request time in auth.ts.
+app.put("/api/admin/resendkey", requireAdmin, async (c) => {
+  const body = await c.req.json<{ key?: string }>().catch(() => ({}));
+  const value = (body.key ?? "").trim();
+  if (!value) {
+    await c.env.DB.prepare(`DELETE FROM admin_config WHERE key = ?`).bind(RESEND_KEY_CONFIG_KEY).run();
+    return c.json({ overridden: false, message: "Reverted to Worker secret key" }, 200);
+  }
+  await c.env.DB.prepare(
+    `INSERT INTO admin_config (key, value, updatedAt) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = excluded.updatedAt`
+  ).bind(RESEND_KEY_CONFIG_KEY, value, nowIso()).run();
+  return c.json({ overridden: true, message: "Resend key override saved" }, 200);
 });
 
 // Available Gemini models (for the dropdown). Fetched from the live API so the

@@ -6,6 +6,8 @@ export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
+  // D1 rejects boolean bind params, so model emailVerified as integer (0/1).
+  // Better Auth binds the value by the column type; integer -> numeric 0/1.
   emailVerified: integer("emailVerified").notNull().default(0),
   image: text("image"),
   createdAt: text("createdAt").notNull(),
@@ -27,6 +29,8 @@ export const session = sqliteTable("session", {
 
 export const account = sqliteTable("account", {
   id: text("id").primaryKey(),
+  // Required by Better Auth v1.7 — identifies the auth provider issuer.
+  issuer: text("issuer").notNull().default(""),
   accountId: text("accountId").notNull(),
   providerId: text("providerId").notNull(),
   userId: text("userId")

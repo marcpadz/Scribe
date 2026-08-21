@@ -109,6 +109,8 @@ const AdminDashboard: React.FC = () => {
   const [apiKeySet, setApiKeySet] = useState(false);
   const [apiKeyOverridden, setApiKeyOverridden] = useState(false);
   const [apiKeyValue, setApiKeyValue] = useState("");
+  const [resendKeyOverridden, setResendKeyOverridden] = useState(false);
+  const [resendKeyValue, setResendKeyValue] = useState("");
   const [tables, setTables] = useState<string[]>([]);
   const [activeTable, setActiveTable] = useState<string | null>(null);
   const [tableData, setTableData] = useState<TableData | null>(null);
@@ -116,17 +118,19 @@ const AdminDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [keyMsg, setKeyMsg] = useState<string | null>(null);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [h, j, t, m, ak] = await Promise.all([
+      const [h, j, t, m, ak, rk] = await Promise.all([
         adminApi.health(),
         adminApi.jobs(150),
         adminApi.tables(),
         adminApi.listModels(),
         adminApi.getApiKey(),
+        adminApi.getResendKey(),
       ]);
       setHealth(h);
       setJobs(j.jobs);
@@ -137,6 +141,7 @@ const AdminDashboard: React.FC = () => {
       setModelOptions(m.models);
       setApiKeySet(ak.set);
       setApiKeyOverridden(ak.overridden);
+      setResendKeyOverridden(rk.overridden);
     } catch (err: any) {
       setError(err?.message || "Failed to load dashboard");
     } finally {
@@ -197,6 +202,30 @@ const AdminDashboard: React.FC = () => {
       setApiKeyOverridden(false);
     } catch (err: any) {
       setError(err?.message || "Failed to clear key");
+    }
+  };
+
+  const saveResendKey = async () => {
+    setResendMsg(null);
+    setError(null);
+    try {
+      const res = await adminApi.saveResendKey(resendKeyValue);
+      setResendMsg(res.message);
+      setResendKeyValue("");
+      setResendKeyOverridden(res.overridden);
+    } catch (err: any) {
+      setError(err?.message || "Failed to save Resend key");
+    }
+  };
+
+  const clearResendKey = async () => {
+    setResendMsg(null);
+    try {
+      const res = await adminApi.saveResendKey("");
+      setResendMsg(res.message);
+      setResendKeyOverridden(false);
+    } catch (err: any) {
+      setError(err?.message || "Failed to clear Resend key");
     }
   };
 
@@ -392,6 +421,31 @@ const AdminDashboard: React.FC = () => {
                 )}
               </div>
               {keyMsg && <p className="text-[11px] text-green-400 mt-2">{keyMsg}</p>}
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-white/10">
+              <h3 className="text-sm font-bold uppercase tracking-wide mb-2 flex items-center gap-2"><KeyRound className="w-4 h-4 text-[#4ECDC4]" /> Resend API key</h3>
+              <p className="text-[11px] text-white/40 mb-2">
+                Used to send email verification. Source: {resendKeyOverridden ? "admin override (stored)" : "Worker secret"}. Invalid key blocks verification emails.
+              </p>
+              <input
+                type="password"
+                value={resendKeyValue}
+                onChange={(e) => setResendKeyValue(e.target.value)}
+                placeholder="paste a valid Resend key"
+                className="w-full px-2 py-2 text-sm rounded-lg bg-white/5 border border-white/10 focus:border-[#FFE900] outline-none font-mono"
+              />
+              <div className="flex gap-2 mt-2">
+                <button onClick={saveResendKey} disabled={!resendKeyValue} className="flex-1 py-2 rounded-lg bg-[#FFE900] text-black font-bold text-sm disabled:opacity-60">
+                  Save key
+                </button>
+                {resendKeyOverridden && (
+                  <button onClick={clearResendKey} className="px-3 py-2 rounded-lg bg-white/10 text-sm hover:bg-white/20">
+                    Revert
+                  </button>
+                )}
+              </div>
+              {resendMsg && <p className="text-[11px] text-green-400 mt-2">{resendMsg}</p>}
             </div>
           </div>
         </div>
