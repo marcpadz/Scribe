@@ -11,6 +11,9 @@ export default defineConfig(({ mode }) => {
     }
 
     return {
+      // GitHub Pages serves this project at https://<user>.github.io/Scribe/,
+      // so asset URLs must be relative to that sub-path (not the domain root).
+      base: '/Scribe/',
       server: {
         port: 3000,
         host: '0.0.0.0',
